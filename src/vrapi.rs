@@ -876,7 +876,7 @@ impl Vr for OpenVr {
         false
     }
     fn refresh(&mut self) -> Result<(), Self::Error> {
-        // We can only reach here if the overlay is not visible
+        // Nothing new to show: the overlay is hidden, or shows the splash image.
         std::thread::sleep(std::time::Duration::from_millis(100));
         Ok(())
     }

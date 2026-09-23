@@ -35,6 +35,9 @@ use vulkano::{
 use xdg::BaseDirectories;
 /// Camera image will be (size * 2, size)
 const CAMERA_SIZE: u32 = 960;
+/// How long the splash image is shown when the passthrough is shown: the camera sends
+/// green frames for a moment after it starts.
+const SPLASH_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
 #[allow(unused_imports)]
 use log::info;
 
@@ -493,7 +496,10 @@ fn main() -> Result<()> {
     let mut debug_pressed = false;
     let mut maybe_current_frame: Option<FrameInfo> = None;
     let is_synchronized = vrsys.is_synchronized();
+    let mut splash_until = (!args.hidden).then(|| std::time::Instant::now() + SPLASH_DURATION);
     loop {
+        // Camera frames are received, but not shown, while the splash image is shown.
+        let showing_splash = splash_until.is_some_and(|until| std::time::Instant::now() < until);
         let next_frame = if ui_state.is_visible() {
             // Try to get the next camera frame if the overlay is visible
             next_camera_frame(
@@ -510,7 +516,9 @@ fn main() -> Result<()> {
             None
         };
 
-        if let Some(current_frame) = next_frame {
+        if let Some(current_frame) =
+            next_frame.filter(|frame| frame.bypass_pipeline || !showing_splash)
+        {
             // We try to get the pose at the time when the camera frame is captured. GetDeviceToAbsoluteTrackingPose
             // doesn't specifically say if a negative time offset will work...
             // also, do this as early as possible.
@@ -572,7 +580,7 @@ fn main() -> Result<()> {
         } else {
             // If we don't have a frame, this means either the overlay is not visible, or
             // the VR runtime is a synchronized runtime so we didn't block wait for the frame.
-            assert!(!ui_state.is_visible() || is_synchronized);
+            assert!(!ui_state.is_visible() || is_synchronized || showing_splash);
             vrsys.refresh()?;
         }
 
@@ -609,6 +617,7 @@ fn main() -> Result<()> {
             events::Action::ShowOverlay => {
                 log::debug!("showing overlay");
                 vrsys.show_overlay()?;
+                splash_until = Some(std::time::Instant::now() + SPLASH_DURATION);
                 {
                     let mut other_frame = frame.lock().unwrap();
                     *other_frame = Some(FrameInfo {
