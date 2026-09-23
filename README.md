@@ -14,6 +14,21 @@ The problem that the Index camera doesn't work on Linux has been there for a lon
 
 See also [the example config file](index-camera-passthrough.toml)
 
+## Depth accuracy
+
+The depth of the scene is estimated with stereo matching of the two cameras, as the first step towards the "3D" passthrough listed in the TODO; it is not used for the passthrough yet. It was checked against a tape measure on a Valve Index, measuring from the front of the headset to a flat printed box standing in front of it, at the 320x320 resolution used by the program:
+
+| Distance (tape measure) | Estimated depth | Error |
+|---|---|---|
+| 0.45 m | 0.459 m | +0.9 cm (2.0%) |
+| 0.80 m | 0.821 m | +2.1 cm (2.6%) |
+| 1.36 m | 1.386 m | +2.6 cm (1.9%) |
+| 2.58 m | 2.660 m | +8.0 cm (3.1%) |
+
+The error grows with the distance because the farther a point is, the less its position differs between the two camera images: at 2.5 m the difference is only about 5 pixels at this resolution, so a fraction of a pixel is already a few centimeters. Most of the error is a constant offset of about 0.2 pixels, from a small inaccuracy in the factory calibration of the cameras; corrected for it, the error is 3 mm RMS over the same range at full resolution. Plain surfaces, like white walls or cabinet doors, have no detail to match and get no depth, or a wrong one.
+
+To check it on your headset, save a frame of the camera, for example with `ffmpeg -f v4l2 -input_format yuyv422 -video_size 1920x960 -i /dev/video0 -frames:v 1 frame.png`, then run `index-camera-passthrough --rectify frame.png --depth disparity.png`: the disparity map has the disparities in 1/16 pixels, the depth is 12.47 / disparity meters for a Valve Index.
+
 ## TODO
 
 * Add option to make overlay follow controller.
