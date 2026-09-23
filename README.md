@@ -7,7 +7,7 @@ The problem that the Index camera doesn't work on Linux has been there for a lon
 
 ## Features
 
-- Stereo overlay: the overlay in your game world that acts as a portal to real world. Meaning you see in 3D. (disabled by default, see [the example config file](index_camera_passthrough.toml) for how to enable and more options.)
+- Stereo overlay: the overlay in your game world that acts as a portal to real world. Meaning you see in 3D. A flat, non-3D view is also available, see [the example config file](index_camera_passthrough.toml).
 - You can configure the overlay to be in one place, or stay in front of you.
 - Use camera calibration data from your Steam installation.
 - Show/hide passthrough with button presses
@@ -73,3 +73,6 @@ or run the binary directly
 ./target/release/index_camera_passthrough
 ```
 
+## Configuration
+
+On first run, the default configuration is written to `~/.config/index_camera_passthrough/index_camera_passthrough.toml` (`$XDG_CONFIG_HOME/index_camera_passthrough/` if set), unless it already exists. See [the example config file](index_camera_passthrough.toml), which is the same file, for all the options. The program has to be restarted after changing it.

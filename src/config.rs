@@ -298,3 +298,17 @@ pub fn load_config(xdg: &BaseDirectories) -> Result<Config> {
         Ok(Default::default())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The example configuration is written to the user's configuration directory on
+    /// first run, so it must always be loadable.
+    #[test]
+    fn default_config_parses() {
+        let cfg: Config = toml::from_str(include_str!("../index_camera_passthrough.toml"))
+            .expect("the default configuration does not parse");
+        assert!(cfg.camera_device.is_empty());
+    }
+}
