@@ -1210,7 +1210,7 @@ checksum = "6e44b0a4eaa4c82f441d50a963f2d5f05a787240aeee097597033e72accfd22f"
 
 [[package]]
 name = "index-camera-passthrough"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "argh",
