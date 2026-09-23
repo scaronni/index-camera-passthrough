@@ -12,41 +12,71 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # rust-toolchain.toml still asks for a floating nightly, but the code no
-  # longer uses nightly features and Cargo.toml declares rust-version = "1.78".
-  # Build with stable so that release binaries are reproducible.
-  RUSTUP_TOOLCHAIN: stable
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    # The binary links the OpenVR client library of the system, whose soname
+    # differs between distributions, so it is built once per distribution.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: ubuntu-26.04
+            container: ""
+          - distro: fedora-44
+            container: registry.fedoraproject.org/fedora:44
+
+    runs-on: ubuntu-26.04
+    container: ${{ matrix.container }}
 
     steps:
-      - uses: actions/checkout@v6
+      # Installed before the checkout so that it can use git in the container.
+      - name: Install build dependencies (Fedora)
+        if: startsWith(matrix.distro, 'fedora-')
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            git tar zstd jq binutils gcc-c++ clang clang-devel pkgconf-pkg-config \
+            systemd-devel libshaderc-devel openvr-devel rustup
+          rustup-init -y --profile minimal --default-toolchain none --no-modify-path
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      # libshaderc-dev is deliberately not installed. Ubuntu builds shaderc
-      # against the system SPIRV-Tools and glslang, so its libshaderc_combined.a
-      # is not self-contained: shaderc-sys links it without SPIRV-Tools and the
-      # vulkano_shaders proc macro then fails to load (undefined symbol
-      # spvBinaryDestroy). Without it, shaderc-sys builds shaderc from the sources
-      # bundled in the crate, which also pins the version through Cargo.lock.
-      - name: Install build dependencies
+      - name: Install build dependencies (Ubuntu)
+        if: startsWith(matrix.distro, 'ubuntu-')
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libudev-dev libclang-dev clang cmake python3 ninja-build
+            libudev-dev libclang-dev clang pkg-config libshaderc-dev libopenvr-dev
 
+      # shaderc-sys links libshaderc_shared.so, which Debian ships as
+      # libshaderc.so. Without it, shaderc-sys falls back to libshaderc_combined.a,
+      # which on Debian is not self-contained (it is built against the system
+      # SPIRV-Tools and glslang) and the vulkano_shaders proc macro then fails to
+      # load with "undefined symbol: spvBinaryDestroy". Building shaderc from the
+      # sources bundled in shaderc-sys fails with CMake 4 and GCC 15.
+      - name: Point shaderc-sys to the system shaderc (Ubuntu)
+        if: startsWith(matrix.distro, 'ubuntu-')
+        run: |
+          dir="$RUNNER_TEMP/shaderc"
+          mkdir -p "$dir"
+          ln -s /usr/lib/x86_64-linux-gnu/libshaderc.so.1 "$dir/libshaderc_shared.so"
+          echo "SHADERC_LIB_DIR=$dir" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+
+      # The toolchain is taken from rust-toolchain.toml.
       - name: Install Rust
-        run: rustup toolchain install stable --profile minimal --no-self-update
+        run: rustup toolchain install --no-self-update
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.distro }}
 
       # On tags the version comes from the tag and must match Cargo.toml, so a
       # release can never ship a binary that reports a different version.
       - name: Determine version
         id: version
         run: |
-          crate_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          crate_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "index_camera_passthrough") | .version')
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             version="${GITHUB_REF_NAME#v}"
             if [ "$version" != "$crate_version" ]; then
@@ -58,13 +88,14 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      # Both the OpenXR (default) and the OpenVR backends.
       - name: Build
-        run: cargo build --release --locked
+        run: cargo build --release --locked --features openvr
 
       - name: Package
         id: package
         run: |
-          name="index_camera_passthrough-${{ steps.version.outputs.version }}-x86_64-linux"
+          name="index_camera_passthrough-${{ steps.version.outputs.version }}-${{ matrix.distro }}-x86_64"
           mkdir "$name"
           install -m 755 target/release/index_camera_passthrough "$name/"
           strip "$name/index_camera_passthrough"
@@ -76,23 +107,24 @@ jobs:
       - name: Upload archive
         uses: actions/upload-artifact@v7
         with:
-          name: index_camera_passthrough
+          name: index_camera_passthrough-${{ matrix.distro }}
           path: ${{ steps.package.outputs.archive }}
           if-no-files-found: error
 
   release:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: github.ref_type == 'tag'
 
     permissions:
       contents: write
 
     steps:
-      - name: Download archive
+      - name: Download archives
         uses: actions/download-artifact@v8
         with:
-          name: index_camera_passthrough
+          pattern: index_camera_passthrough-*
+          merge-multiple: true
           path: dist
 
       - name: Create GitHub Release
