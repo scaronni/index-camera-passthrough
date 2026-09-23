@@ -27,23 +27,6 @@ The error grows with the distance because the farther a point is, the less its p
 
 To check it on your headset, save a frame of the camera, for example with `ffmpeg -f v4l2 -input_format yuyv422 -video_size 1920x960 -i /dev/video0 -frames:v 1 frame.png`, then run `index-camera-passthrough --rectify frame.png --depth disparity.png`: the disparity map has the disparities in 1/16 pixels, the depth is 18.70 / disparity meters for a Valve Index.
 
-## Build instruction
-
-Binaries for Fedora and Ubuntu are attached to the [releases](https://github.com/scaronni/index-camera-passthrough/releases).
-
-To build this program, you need:
-
-* Rust 1.89 or newer ([How to install](https://www.rust-lang.org/tools/install))
-* clang, and the development packages of OpenVR, OpenCV, shaderc and udev:
-  * Fedora: `clang-devel openvr-devel opencv-devel libshaderc-devel systemd-devel`
-  * Debian / Ubuntu: `libclang-dev libopenvr-dev libopencv-dev libshaderc-dev libudev-dev`. Debian ships the shared shaderc library as `libshaderc.so`: point `SHADERC_LIB_DIR` to a directory with a `libshaderc_shared.so` link to it, as done in `.github/workflows/build.yaml`.
-
-Then run, to build with both the OpenXR and the OpenVR backends:
-
-```
-cargo build --release --features openvr
-```
-
 ## Usage
 
 ### Start automatically with SteamVR
@@ -93,3 +76,20 @@ or run the binary directly
 ## Configuration
 
 On first run, the default configuration is written to `~/.config/index-camera-passthrough/index-camera-passthrough.toml` (`$XDG_CONFIG_HOME/index-camera-passthrough/` if set), unless it already exists. See [the example config file](index-camera-passthrough.toml), which is the same file, for all the options. The program has to be restarted after changing it.
+
+## Build instruction
+
+Binaries for Fedora and Ubuntu are attached to the [releases](https://github.com/scaronni/index-camera-passthrough/releases).
+
+To build this program, you need:
+
+* Rust 1.89 or newer ([How to install](https://www.rust-lang.org/tools/install))
+* clang, and the development packages of OpenVR, OpenCV, shaderc and udev:
+  * Fedora: `clang-devel openvr-devel opencv-devel libshaderc-devel systemd-devel`
+  * Debian / Ubuntu: `libclang-dev libopenvr-dev libopencv-dev libshaderc-dev libudev-dev`. Debian ships the shared shaderc library as `libshaderc.so`: point `SHADERC_LIB_DIR` to a directory with a `libshaderc_shared.so` link to it, as done in `.github/workflows/build.yaml`.
+
+Then run, to build with both the OpenXR and the OpenVR backends:
+
+```
+cargo build --release --features openvr
+```
