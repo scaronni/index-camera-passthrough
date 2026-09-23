@@ -46,6 +46,24 @@ cargo build --release --features openvr
 
 ## Usage
 
+### Start automatically with SteamVR
+
+Run `index-camera-passthrough` once while SteamVR is running. The first time, it registers itself in SteamVR as "Index Camera Passthrough" and enables its automatic start, and the log shows:
+
+```
+Registered in SteamVR, enabling the automatic start with SteamVR
+```
+
+From then on, SteamVR starts it when SteamVR starts. The passthrough is shown right away, press the buttons described in [the example config file](index-camera-passthrough.toml) to hide it and show it again.
+
+To disable the automatic start, open the SteamVR settings, show the advanced settings, and in Startup / Shutdown click Choose Startup Overlay Apps:
+
+![SteamVR settings, Startup / Shutdown](docs/steamvr-startup-settings.png)
+
+Then turn off Index Camera Passthrough:
+
+![Start These Overlay Apps On Launch](docs/steamvr-startup-overlay-apps.png)
+
 ### Run from Steam library
 
 After you have built the program, copy it to `/usr/local/bin`
