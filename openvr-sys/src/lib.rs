@@ -5,6 +5,7 @@ autocxx::include_cpp! {
     generate!("vr::IVROverlay")
     generate!("vr::IVRCompositor")
     generate!("vr::IVRInput")
+    generate!("vr::IVRApplications")
     generate_pod!("vr::VRActiveActionSet_t")
     generate_pod!("vr::VREvent_Reserved_t")
     generate_pod!("vr::VREvent_Controller_t")
@@ -53,6 +54,7 @@ autocxx::include_cpp! {
     generate!("vr::VROverlay")
     generate!("vr::VRCompositor")
     generate!("vr::VRInput")
+    generate!("vr::VRApplications")
     safety!(unsafe)
 }
 

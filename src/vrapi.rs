@@ -406,8 +406,12 @@ impl OpenVr {
             .pin_mut()
             .SetOverlayTextureColorSpace(vroverlay, openvr_sys::EColorSpace::ColorSpace_Linear)
             .into_result()?;
-        let mut input = unsafe { Pin::new_unchecked(&mut *openvr_sys::VRInput()) };
         let action_manifest = xdg.find_data_file("actions.json").unwrap();
+        // Before setting the action manifest, so that it is tied to the application key.
+        if let Err(e) = register_application(xdg, &action_manifest) {
+            log::warn!("Cannot register the application in SteamVR: {e:#}");
+        }
+        let mut input = unsafe { Pin::new_unchecked(&mut *openvr_sys::VRInput()) };
         let action_manifest = std::ffi::CString::new(action_manifest.to_str().unwrap()).unwrap();
         unsafe {
             input
@@ -575,6 +579,64 @@ impl Drop for OpenVr {
     }
 }
 static VULKAN_LIBRARY: OnceLock<Arc<vulkano::VulkanLibrary>> = OnceLock::new();
+
+/// Key of the application in SteamVR.
+#[cfg(feature = "openvr")]
+const APPLICATION_KEY: &str = "index-camera-passthrough";
+
+/// Register the application in SteamVR with a manifest pointing to this binary and to
+/// its action manifest, so that it has a name, and its controller bindings can be
+/// changed in the SteamVR settings. SteamVR keeps it after the application exits,
+/// registering it again on each start keeps the paths up to date.
+#[cfg(feature = "openvr")]
+fn register_application(
+    xdg: &xdg::BaseDirectories,
+    action_manifest: &std::path::Path,
+) -> anyhow::Result<()> {
+    use anyhow::{bail, Context};
+    use openvr_sys::EVRApplicationError::VRApplicationError_None;
+    let manifest = serde_json::json!({
+        "source": "builtin",
+        "applications": [{
+            "app_key": APPLICATION_KEY,
+            "launch_type": "binary",
+            "binary_path_linux": std::env::current_exe()?,
+            "is_dashboard_overlay": true,
+            "action_manifest_path": action_manifest,
+            "strings": {
+                "en_us": {
+                    "name": "Index Camera Passthrough",
+                    "description": "Camera passthrough for Valve Index on Linux",
+                },
+            },
+        }],
+    });
+    let path = xdg.place_data_file("index-camera-passthrough.vrmanifest")?;
+    std::fs::write(&path, serde_json::to_string_pretty(&manifest)?)?;
+    let path = CString::new(path.to_str().context("the data directory is not UTF-8")?)?;
+    let key = CString::new(APPLICATION_KEY)?;
+    let mut applications = unsafe { Pin::new_unchecked(&mut *openvr_sys::VRApplications()) };
+    let error = unsafe {
+        applications
+            .as_mut()
+            .AddApplicationManifest(path.as_ptr(), false)
+    };
+    if error != VRApplicationError_None {
+        bail!(
+            "cannot add the application manifest, error {}",
+            error as i32
+        );
+    }
+    let error = unsafe {
+        applications
+            .as_mut()
+            .IdentifyApplication(std::process::id(), key.as_ptr())
+    };
+    if error != VRApplicationError_None {
+        bail!("cannot identify the application, error {}", error as i32);
+    }
+    Ok(())
+}
 
 pub(crate) fn get_vulkan_library() -> &'static Arc<vulkano::VulkanLibrary> {
     VULKAN_LIBRARY.get_or_init(|| vulkano::VulkanLibrary::new().unwrap())

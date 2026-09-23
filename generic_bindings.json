@@ -1,7 +1,7 @@
 {
    "action_manifest_version" : 1,
    "alias_info" : {},
-   "app_key" : "system.generated.index-camera-passthrough",
+   "app_key" : "index-camera-passthrough",
    "bindings" : {
       "/actions/main" : {
          "sources" : [
