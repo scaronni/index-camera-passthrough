@@ -318,6 +318,9 @@ pub(crate) struct OpenVr {
     position_mode: PositionMode,
     reposition: bool,
     display_mode: DisplayMode,
+    /// Whether `display_mode` was applied to the overlay, which starts with the default
+    /// flags and bounds.
+    display_mode_applied: bool,
     overlay_transform: Matrix4<f32>,
     projector: Option<crate::projection::Projection>,
     device: Arc<Device>,
@@ -473,6 +476,7 @@ impl OpenVr {
             buttons: button,
             texture: None,
             display_mode: DisplayMode::default(),
+            display_mode_applied: false,
             position_mode: PositionMode::default(),
             reposition: false,
             projector: None,
@@ -877,10 +881,11 @@ impl Vr for OpenVr {
         Ok(())
     }
     fn set_display_mode(&mut self, mode: DisplayMode) -> Result<(), Self::Error> {
-        if self.display_mode == mode {
+        if self.display_mode_applied && self.display_mode == mode {
             return Ok(());
         }
         self.display_mode = mode;
+        self.display_mode_applied = true;
         if self.display_mode.is_projected() {
             let camera_calib = self.load_camera_paramter();
             if self.projector.is_none() {
