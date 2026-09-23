@@ -90,9 +90,8 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      # Both the OpenXR (default) and the OpenVR backends.
       - name: Build
-        run: cargo build --release --locked --features openvr
+        run: cargo build --release --locked
 
       - name: Package
         id: package

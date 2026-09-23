@@ -9,7 +9,9 @@ license = "MIT"
 rust-version = "1.89"
 
 [features]
-default = ["openxr"]
+# Both backends are built: the OpenXR runtime of SteamVR does not implement the
+# overlay extension, so SteamVR needs the OpenVR backend.
+default = ["openxr", "openvr"]
 openvr = ["dep:openvr-sys"]
 openxr = ["dep:openxr"]
 

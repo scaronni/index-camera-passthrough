@@ -81,5 +81,5 @@ To build this program, you need:
 Then run, to build with both the OpenXR and the OpenVR backends:
 
 ```
-cargo build --release --features openvr
+cargo build --release
 ```
