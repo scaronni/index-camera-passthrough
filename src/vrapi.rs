@@ -658,8 +658,29 @@ fn register_application(
     Ok(())
 }
 
+/// The Vulkan loader, linked with the program instead of opened at run time.
+struct LinkedVulkan;
+
+#[link(name = "vulkan")]
+extern "system" {
+    fn vkGetInstanceProcAddr(
+        instance: ash::vk::Instance,
+        name: *const std::ffi::c_char,
+    ) -> ash::vk::PFN_vkVoidFunction;
+}
+
+unsafe impl vulkano::library::Loader for LinkedVulkan {
+    unsafe fn get_instance_proc_addr(
+        &self,
+        instance: ash::vk::Instance,
+        name: *const std::ffi::c_char,
+    ) -> ash::vk::PFN_vkVoidFunction {
+        vkGetInstanceProcAddr(instance, name)
+    }
+}
+
 pub(crate) fn get_vulkan_library() -> &'static Arc<vulkano::VulkanLibrary> {
-    VULKAN_LIBRARY.get_or_init(|| vulkano::VulkanLibrary::new().unwrap())
+    VULKAN_LIBRARY.get_or_init(|| vulkano::VulkanLibrary::with_loader(LinkedVulkan).unwrap())
 }
 
 #[cfg(feature = "openvr")]
@@ -1108,8 +1129,6 @@ fn posef_to_nalgebra(posef: openxr::Posef) -> (UnitQuaternion<f32>, nalgebra::Ve
 #[cfg(feature = "openxr")]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum OpenXrError {
-    #[error("cannot load openxr loader: {0}")]
-    XrLoad(#[from] openxr::EntryError),
     #[error("cannot load vulkan library: {0}")]
     VkLoad(#[from] vulkano::LoadingError),
     #[error("vulkan error: {0}")]
@@ -1305,7 +1324,7 @@ impl OpenXr {
     }
 
     pub(crate) fn new(placement: u32) -> Result<Self, OpenXrError> {
-        let entry = unsafe { openxr::Entry::load(&())? };
+        let entry = openxr::Entry::linked(&())?;
         let mut extension = openxr::ExtensionSet::default();
         extension.extx_overlay = true;
         extension.khr_vulkan_enable2 = true;

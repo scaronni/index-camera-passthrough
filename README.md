@@ -74,9 +74,9 @@ Binaries for Fedora and Ubuntu are attached to the [releases](https://github.com
 To build this program, you need:
 
 * Rust 1.89 or newer ([How to install](https://www.rust-lang.org/tools/install))
-* clang, and the development packages of OpenVR, OpenCV, shaderc and udev:
-  * Fedora: `clang-devel openvr-devel opencv-devel libshaderc-devel systemd-devel`
-  * Debian / Ubuntu: `libclang-dev libopenvr-dev libopencv-dev libshaderc-dev libudev-dev`. Debian ships the shared shaderc library as `libshaderc.so`: point `SHADERC_LIB_DIR` to a directory with a `libshaderc_shared.so` link to it, as done in `.github/workflows/build.yaml`.
+* clang, and the development packages of OpenVR, OpenXR, Vulkan, OpenCV, shaderc and udev:
+  * Fedora: `clang-devel openvr-devel openxr-devel vulkan-loader-devel opencv-devel libshaderc-devel systemd-devel`
+  * Debian / Ubuntu: `libclang-dev libopenvr-dev libopenxr-dev libvulkan-dev libopencv-dev libshaderc-dev libudev-dev`. Debian ships the shared shaderc library as `libshaderc.so`: point `SHADERC_LIB_DIR` to a directory with a `libshaderc_shared.so` link to it, as done in `.github/workflows/build.yaml`.
 
 Then run, to build with both the OpenXR and the OpenVR backends:
 

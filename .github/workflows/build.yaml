@@ -36,7 +36,8 @@ jobs:
         run: |
           dnf install -y --setopt=install_weak_deps=False \
             git tar zstd jq binutils gcc-c++ clang clang-devel pkgconf-pkg-config \
-            systemd-devel libshaderc-devel openvr-devel opencv-devel rustup
+            systemd-devel libshaderc-devel openvr-devel opencv-devel vulkan-loader-devel \
+            openxr-devel rustup
           rustup-init -y --profile minimal --default-toolchain none --no-modify-path
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
@@ -46,7 +47,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libudev-dev libclang-dev clang pkg-config libshaderc-dev libopenvr-dev \
-            libopencv-dev
+            libopencv-dev libvulkan-dev libopenxr-dev
 
       # shaderc-sys links libshaderc_shared.so, which Debian ships as
       # libshaderc.so. Without it, shaderc-sys falls back to libshaderc_combined.a,
