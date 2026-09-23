@@ -1,25 +1,6 @@
 use nalgebra::{matrix, Affine3, Matrix4, TCategory};
 use serde::{Deserialize, Serialize};
 
-/// How the camera images are projected onto the overlay in stereo mode. The depth of
-/// the scene is not known, so the projection assumes that everything is at the
-/// distance of the overlay.
-#[derive(Eq, PartialEq, Debug, Serialize, Deserialize, Clone, Copy, PartialOrd, Ord)]
-pub enum ProjectionMode {
-    /// project the camera images from the position of the cameras. Objects at the
-    /// distance of the overlay are shown where they really are.
-    FromCamera,
-    /// project the camera images as if the cameras were at your eyes. This ignores
-    /// the distance between the cameras and your eyes, so objects that are not far
-    /// away are shown in the wrong place.
-    FromEye,
-}
-
-impl Default for ProjectionMode {
-    fn default() -> Self {
-        Self::FromCamera
-    }
-}
 pub const fn default_overlay_distance() -> f32 {
     1.0
 }
@@ -131,12 +112,9 @@ pub enum DisplayMode {
     Direct,
     /// display a stereo image on the overlay. conceptually the overlay becomes a portal from VR
     /// space to real world. you will be able to see more of the real world if the overlay occupys
-    /// more of your field of view.
-    Stereo {
-        /// how is the camera's image projected onto the overlay
-        #[serde(default)]
-        projection_mode: ProjectionMode,
-    },
+    /// more of your field of view. The camera images are projected from the position of the
+    /// cameras, assuming that everything is at the distance of the overlay.
+    Stereo,
     /// display one of the camera's image on the overlay
     Flat {
         /// which camera's image to display
@@ -146,14 +124,12 @@ pub enum DisplayMode {
 }
 
 impl DisplayMode {
-    pub(crate) fn projection_mode(&self) -> Option<ProjectionMode> {
-        match self {
-            DisplayMode::Stereo { projection_mode } => Some(*projection_mode),
-            _ => None,
-        }
+    /// Whether the camera images are projected onto the overlay.
+    pub(crate) fn is_projected(&self) -> bool {
+        matches!(self, DisplayMode::Stereo)
     }
     pub(crate) fn is_stereo(&self) -> bool {
-        matches!(self, DisplayMode::Stereo { .. } | DisplayMode::Direct)
+        matches!(self, DisplayMode::Stereo | DisplayMode::Direct)
     }
 }
 
@@ -311,5 +287,17 @@ mod tests {
         let cfg: Config = toml::from_str(include_str!("../index-camera-passthrough.toml"))
             .expect("the default configuration does not parse");
         assert!(cfg.camera_device.is_empty());
+    }
+
+    /// The projection mode was removed, configurations that still set it must load.
+    #[test]
+    fn projection_mode_is_ignored() {
+        for mode in ["FromCamera", "FromEye"] {
+            let cfg: Config = toml::from_str(&format!(
+                "backend = \"openvr\"\n[display_mode]\nmode = \"Stereo\"\nprojection_mode = \"{mode}\"\n"
+            ))
+            .unwrap();
+            assert_eq!(cfg.display_mode, DisplayMode::Stereo);
+        }
     }
 }

@@ -69,7 +69,6 @@ pub struct ProjectionParameters {
     pub overlay_width: f32,
     /// MVP matrices for the left and right eye, respectively.
     pub mvps: [Matrix4<f32>; 2],
-    pub mode: ProjectionMode,
 }
 
 struct Uniforms {
@@ -96,7 +95,7 @@ pub struct Projection {
     mvps_changed: bool,
     desc_sets: [Arc<DescriptorSet>; 2],
 }
-use crate::{config::ProjectionMode, rectification::Rectification, utils::Array};
+use crate::{rectification::Rectification, utils::Array};
 #[derive(VertexTrait, Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 struct Vertex {
@@ -157,13 +156,11 @@ impl Projection {
     ///
     /// - overlay_transform: pose of the overlay in world space
     /// - fov: focal length of the rectified images divided by their size
-    /// - view_transforms: poses of the left and right eye in world space
     /// - hmd_transform: pose of the Hmd in world space
     pub(crate) fn update_mvps(
         &mut self,
         overlay_transform: &Matrix4<f32>,
         fov: &[[f32; 2]; 2],
-        view_tranforms: &[Matrix4<f32>; 2],
         hmd_transform: &Matrix4<f32>,
     ) -> Result<(), ProjectorError> {
         // Poses of the rectified cameras in the Hmd frame. Without calibration, assume
@@ -175,22 +172,7 @@ impl Projection {
                     .map(|pose| pose.to_homogeneous().cast::<f32>())
             })
             .unwrap_or([Matrix4::identity(); 2]);
-
-        log::trace!(
-            "eye to head: left: {:?} right: {:?}",
-            view_tranforms[0],
-            view_tranforms[1]
-        );
-
-        let [left_eye, right_eye] = [0, 1].map(|eye| {
-            let mut pose = hmd_transform * cameras[eye];
-            if self.saved_parameters.mode == ProjectionMode::FromEye {
-                // Keep the orientation of the camera, but move it to the eye.
-                pose.fixed_view_mut::<3, 1>(0, 3)
-                    .copy_from(&view_tranforms[eye].fixed_view::<3, 1>(0, 3));
-            }
-            pose
-        });
+        let [left_eye, right_eye] = cameras.map(|camera| hmd_transform * camera);
         let left_view = left_eye
             .try_inverse()
             .expect("HMD transform not invertable?");
@@ -226,10 +208,6 @@ impl Projection {
         }
         self.saved_parameters.mvps = mvps;
         self.mvps_changed = true;
-    }
-    /// Takes effect at the next `update_mvps`.
-    pub fn set_mode(&mut self, mode: ProjectionMode) {
-        self.saved_parameters.mode = mode;
     }
     pub fn recalculate_uniforms(&mut self) -> Result<(), ProjectorError> {
         if !self.mvps_changed {
@@ -356,7 +334,6 @@ impl Projection {
         )?;
         log::info!("after");
         let init_params = ProjectionParameters {
-            mode: ProjectionMode::FromCamera,
             overlay_width,
             mvps: [Matrix4::identity(), Matrix4::identity()],
         };

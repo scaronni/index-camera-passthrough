@@ -519,19 +519,6 @@ impl OpenVr {
         .into_result()
         .map_err(Into::into)
     }
-    fn eye_to_head(&self) -> [Matrix4<f32>; 2] {
-        let left_eye: Matrix4<_> = self
-            .sys
-            .pin_mut()
-            .GetEyeToHeadTransform(openvr_sys::EVREye::Eye_Left)
-            .into();
-        let right_eye: Matrix4<_> = self
-            .sys
-            .pin_mut()
-            .GetEyeToHeadTransform(openvr_sys::EVREye::Eye_Right)
-            .into();
-        [left_eye, right_eye]
-    }
 }
 
 #[cfg(feature = "openvr")]
@@ -700,7 +687,7 @@ impl Vr for OpenVr {
     }
     fn get_render_texture(&mut self) -> Result<Option<Arc<Image>>, Self::Error> {
         // log::debug!("get_render_texture");
-        if self.display_mode.projection_mode().is_none() {
+        if !self.display_mode.is_projected() {
             assert!(self.render_texture.is_none());
             self.render_texture =
                 Some(self.double_buffer[(self.texture_in_use ^ 1) as usize].clone());
@@ -724,17 +711,10 @@ impl Vr for OpenVr {
             let transform: Matrix4<f32> = self.position_mode.transform(hmd_transform).into();
             self.set_overlay_transformation(transform)?;
         }
-        let output = if self.display_mode.projection_mode().is_some() {
+        let output = if self.display_mode.is_projected() {
             let new_texture = self.double_buffer[(self.texture_in_use ^ 1) as usize].clone();
-            let eye_to_head = self.eye_to_head();
-            let view_transforms = eye_to_head.map(|m| hmd_transform * m);
             let projector = self.projector.as_mut().unwrap();
-            projector.update_mvps(
-                &self.overlay_transform,
-                fov,
-                &view_transforms,
-                &hmd_transform,
-            )?;
+            projector.update_mvps(&self.overlay_transform, fov, &hmd_transform)?;
             let future = projector.project(
                 self.allocator.clone(),
                 self.cmdbuf_allocator.clone(),
@@ -807,11 +787,11 @@ impl Vr for OpenVr {
             return Ok(());
         }
         self.display_mode = mode;
-        if let Some(projection_mode) = self.display_mode.projection_mode() {
+        if self.display_mode.is_projected() {
             let camera_calib = self.load_camera_paramter();
             if self.projector.is_none() {
                 self.render_texture = Some(crate::create_submittable_image(self.device.clone())?);
-                let mut projector = crate::projection::Projection::new(
+                let projector = crate::projection::Projection::new(
                     self.device.clone(),
                     self.allocator.clone(),
                     self.descriptor_set_allocator.clone(),
@@ -820,7 +800,6 @@ impl Vr for OpenVr {
                     &camera_calib,
                     ImageLayout::TransferSrcOptimal,
                 )?;
-                projector.set_mode(projection_mode);
                 self.projector = Some(projector);
             }
         } else {
@@ -1530,19 +1509,13 @@ impl Vr for OpenXr {
         let transform = self.position_mode.transform(hmd_transform);
         let overlay_posef = affine_to_posef(transform);
         self.saved_overlay_pose = Some(overlay_posef);
-        if self.display_mode.projection_mode().is_some() {
+        if self.display_mode.is_projected() {
             // Apply projection
             let image = self.swapchain.acquire_image()? as usize;
-            let view_transforms = [
-                Translation3::from(view_poses[0].1).to_homogeneous()
-                    * view_poses[0].0.to_homogeneous(),
-                Translation3::from(view_poses[1].1).to_homogeneous()
-                    * view_poses[1].0.to_homogeneous(),
-            ];
             self.swapchain.wait_image(openxr::Duration::INFINITE)?;
             let output = self.swapchain_images[image].clone();
             let projector = self.projector.as_mut().unwrap();
-            projector.update_mvps(transform.matrix(), fov, &view_transforms, &hmd_transform)?;
+            projector.update_mvps(transform.matrix(), fov, &hmd_transform)?;
             let future = projector.project(
                 self.allocator.clone(),
                 self.cmdbuf_allocator.clone(),
@@ -1626,7 +1599,7 @@ impl Vr for OpenXr {
             )?;
             return Ok(None);
         }
-        if self.display_mode.projection_mode().is_some() {
+        if self.display_mode.is_projected() {
             log::trace!("render to intermediate texture");
             assert!(self.render_texture.is_some());
             return Ok(self.render_texture.clone());
@@ -1640,11 +1613,11 @@ impl Vr for OpenXr {
 
     fn set_display_mode(&mut self, mode: DisplayMode) -> Result<(), Self::Error> {
         self.display_mode = mode;
-        if let Some(projection_mode) = self.display_mode.projection_mode() {
+        if self.display_mode.is_projected() {
             let camera_calib = self.load_camera_paramter();
             if self.projector.is_none() {
                 self.render_texture = Some(crate::create_submittable_image(self.device.clone())?);
-                let mut projector = crate::projection::Projection::new(
+                let projector = crate::projection::Projection::new(
                     self.device.clone(),
                     self.allocator.clone(),
                     self.descriptor_set_allocator.clone(),
@@ -1653,7 +1626,6 @@ impl Vr for OpenXr {
                     &camera_calib,
                     ImageLayout::ColorAttachmentOptimal,
                 )?;
-                projector.set_mode(projection_mode);
                 self.projector = Some(projector);
             }
         } else {

@@ -46,20 +46,13 @@ distance = 1.0
 # transform = [ [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1] ]
 
 [display_mode]
-## "Stereo": 3D view, the window acts as a portal to the real world. The cameras
-##           are further apart than your eyes, so the depth is exaggerated and
-##           looking at it strains the eyes more than the VR scene around it.
+## "Stereo": 3D view, the window acts as a portal to the real world. Objects at
+##           the distance of the window are shown where they really are. The
+##           cameras are further apart than your eyes, so the depth is exaggerated
+##           and looking at it strains the eyes more than the VR scene around it.
 ## "Flat":   plain 2D image of one camera. Both eyes see the same picture at the
 ##           depth of the window, so it is the most comfortable to look at.
 mode = "Stereo"
-
-## Only for "Stereo". The depth of the scene is not known, so the projection
-## assumes that everything is at the distance of the window:
-##   "FromCamera": projects from the position of the cameras, objects at the
-##                 distance of the window are shown where they really are
-##   "FromEye":    projects as if the cameras were at your eyes, which ignores the
-##                 few centimeters between them, so close objects are misplaced
-projection_mode = "FromCamera"
 
 ## Only for "Flat": which camera to show, "Left" or "Right". The one on the side
 ## of your dominant eye usually looks more natural.
