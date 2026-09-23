@@ -213,7 +213,9 @@ impl Pipeline {
                     | ImageUsage::COLOR_ATTACHMENT,
                 ..Default::default()
             },
-            MemoryTypeFilter::HOST_SEQUENTIAL_WRITE | MemoryTypeFilter::PREFER_DEVICE,
+            // Filled by copying from `cpu_buffer`, never mapped. Not all drivers have
+            // host visible memory types for optimally tiled images (e.g. NVIDIA).
+            MemoryTypeFilter::PREFER_DEVICE,
         )?;
         device.set_debug_utils_object_name(&yuv_texture, Some("yuv_texture"))?;
         let textures = (0..2)
