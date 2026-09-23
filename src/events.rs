@@ -24,9 +24,9 @@ impl State {
         self.visible
     }
 
-    pub fn new(delay: Duration) -> Self {
+    pub fn new(delay: Duration, visible: bool) -> Self {
         Self {
-            visible: true,
+            visible,
             state: InternalState::Armed,
             delay,
         }

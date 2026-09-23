@@ -313,6 +313,9 @@ struct Args {
     /// where to write the rectified frame
     #[argh(option, default = "\"rectified.png\".into()")]
     output: std::path::PathBuf,
+    /// start with the passthrough hidden, as when SteamVR starts the program
+    #[argh(switch)]
+    hidden: bool,
     /// with --rectify, also write the disparity map of the frame, in 1/16 pixels
     #[argh(option, arg_name = "disparity.png")]
     depth: Option<std::path::PathBuf>,
@@ -448,6 +451,11 @@ fn main() -> Result<()> {
     log::debug!("waiting for ready");
     vrsys.wait_for_ready()?;
     log::debug!("VR runtime ready");
+    if args.hidden {
+        log::debug!("hiding overlay");
+        vrsys.hide_overlay()?;
+        app_state.stop_capture();
+    }
 
     // TODO: don't hardcode this
     struct AppConfig {
@@ -481,7 +489,7 @@ fn main() -> Result<()> {
 
     log::debug!("pipeline: {pipeline:?}");
 
-    let mut ui_state = events::State::new(cfg.open_delay);
+    let mut ui_state = events::State::new(cfg.open_delay, !args.hidden);
     let mut debug_pressed = false;
     let mut maybe_current_frame: Option<FrameInfo> = None;
     let is_synchronized = vrsys.is_synchronized();

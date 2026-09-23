@@ -603,6 +603,8 @@ fn register_application(
             "app_key": APPLICATION_KEY,
             "launch_type": "binary",
             "binary_path_linux": std::env::current_exe()?,
+            // Started with SteamVR, the passthrough is only shown when asked for.
+            "arguments": "--hidden",
             "is_dashboard_overlay": true,
             "action_manifest_path": action_manifest,
             "strings": {
