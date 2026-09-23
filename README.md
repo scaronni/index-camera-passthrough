@@ -49,16 +49,6 @@ Then turn off Index Camera Passthrough:
 
 ![Start These Overlay Apps On Launch](docs/steamvr-startup-overlay-apps.png)
 
-### Run from Steam library
-
-After you have built the program, copy it to `/usr/local/bin`
-
-```
-cp ./target/release/index-camera-passthrough /usr/local/bin
-```
-
-And then add the `index-camera-passthrough.desktop` file to your Steam Library.
-
 ### Run directly
 
 To run this program, you can either
