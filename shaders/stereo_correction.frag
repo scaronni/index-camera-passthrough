@@ -1,45 +1,44 @@
 #version 450
 
+// Resample one camera image as seen by the rectified pinhole camera.
 layout(binding = 0) uniform Parameters {
-    // Distortion coefficients
+    // Rotation from rays of the rectified camera to rays of the physical camera,
+    // in the upper left 3x3.
+    mat4 rotation;
+    // Fisheye distortion coefficients
     vec4 dcoef;
-    // Optical center
+    // Optical center, divided by the image size
     vec2 center;
-    // Focal length in terms of focal divided by sensor_width
+    // Focal length, divided by the image size
     vec2 focal;
-    // Scaling of the output image
-    vec2 scale;
-    // Pixel size of the sensor_width
-    float sensorSize;
+    // Offset of this camera in the side by side input texture
     vec2 texOffset;
+    // Focal length of the rectified image, divided by its size
+    float rectifiedFocal;
 };
 layout(binding = 1) uniform sampler2D inputTex;
-in vec4 gl_FragCoord;
 
-// Input coordinates -0.5 ~ 0.5
-// relative to the center of the undistorted image,
-// this way we align the optical center to the center of the image.
+// Output coordinates -0.5 ~ 0.5, x right, y down, relative to the center of the
+// rectified image, which is its optical center.
 layout(location = 0) in noperspective vec2 coord;
 layout(location = 0) out vec4 outColor;
 void main() {
-    vec2 r = coord * scale / focal;
-    // Also scale the r so the whole circular region will be included
-    // in the output.
-    float theta = atan(length(r));
+    vec3 ray = mat3(rotation) * vec3(coord / rectifiedFocal, 1.0);
+    float r = length(ray.xy);
+    // Angle from the optical axis, and its distorted value on the sensor.
+    float theta = atan(r, ray.z);
     float theta2 = theta * theta;
-    theta *= 1 + theta2 * (dcoef.x +
-                 theta2 * (dcoef.y +
-                 theta2 * (dcoef.z +
-                 theta2 * dcoef.w)));
-    // Scale r vector to length theta
-    vec2 mapped = theta / length(r) * r;
-    mapped *= focal;
-    // mapped should now be -0.5~0.5, in inputTex coord
-    // move mapped so its centered at `center`
-    mapped = mapped + center;
-    // mapped is now 0 ~ 1
-    // scale x by 0.5 because inputTex is 2 image side by side
+    float thetaD = theta * (1 + theta2 * (dcoef.x +
+                                theta2 * (dcoef.y +
+                                theta2 * (dcoef.z +
+                                theta2 * dcoef.w))));
+    vec2 mapped = r > 0.0 ? ray.xy * (thetaD / r) : vec2(0.0);
+    mapped = mapped * focal + center;
+    if (any(lessThan(mapped, vec2(0.0))) || any(greaterThan(mapped, vec2(1.0)))) {
+        outColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+    // The input is two images side by side.
     mapped.x *= 0.5;
-    // mapped is now (0~0.5, 0~1.0);
     outColor = texture(inputTex, mapped + texOffset);
 }

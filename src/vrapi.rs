@@ -59,10 +59,37 @@ use crate::{
     utils::DeviceExt,
 };
 
+/// Pose in the tracking frame of the Steam lighthouse calibration. The axes are in the
+/// OpenGL convention: x right, y up, looking along -z.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 pub struct Extrinsics {
+    /// Direction of the x axis
+    #[serde(default = "default_plus_x")]
+    pub plus_x: [f64; 3],
+    /// Direction of the z axis
+    #[serde(default = "default_plus_z")]
+    pub plus_z: [f64; 3],
     /// Offset of the camera from Hmd
     pub position: [f64; 3],
+}
+
+// The tracking frame is rotated by 180 degrees around y relative to the Hmd.
+const fn default_plus_x() -> [f64; 3] {
+    [-1.0, 0.0, 0.0]
+}
+
+const fn default_plus_z() -> [f64; 3] {
+    [0.0, 0.0, -1.0]
+}
+
+impl Default for Extrinsics {
+    fn default() -> Self {
+        Self {
+            plus_x: default_plus_x(),
+            plus_z: default_plus_z(),
+            position: [0.0; 3],
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
@@ -104,6 +131,9 @@ pub struct TrackedCamera {
 pub struct StereoCamera {
     pub left: TrackedCamera,
     pub right: TrackedCamera,
+    /// Pose of the Hmd in the tracking frame of the calibration
+    #[serde(default)]
+    pub head: Extrinsics,
 }
 #[cfg(feature = "openvr")]
 pub struct Bounds {
@@ -291,7 +321,6 @@ pub(crate) struct OpenVr {
     render_texture: Option<Arc<vulkano::image::Image>>,
     double_buffer: [Arc<vulkano::image::Image>; 2],
     texture_in_use: u64,
-    ipd: Option<f32>,
 }
 #[cfg(feature = "openvr")]
 impl OpenVr {
@@ -448,24 +477,7 @@ impl OpenVr {
             texture_in_use: 1,
             device,
             render_texture: None,
-            ipd: None,
         })
-    }
-    fn ipd(&mut self) -> Result<f32, OpenVrError> {
-        if let Some(ipd) = self.ipd {
-            return Ok(ipd);
-        }
-        let mut error = MaybeUninit::<_>::uninit();
-        unsafe {
-            let ipd = self.sys.pin_mut().GetFloatTrackedDeviceProperty(
-                0,
-                openvr_sys::ETrackedDeviceProperty::Prop_UserIpdMeters_Float,
-                error.as_mut_ptr(),
-            );
-            error.assume_init().into_result()?;
-            self.ipd = Some(ipd);
-            Ok(ipd)
-        }
     }
     fn required_extensions(
         sys: &crate::openvr::VRSystem,
@@ -716,7 +728,6 @@ impl Vr for OpenVr {
             let new_texture = self.double_buffer[(self.texture_in_use ^ 1) as usize].clone();
             let eye_to_head = self.eye_to_head();
             let view_transforms = eye_to_head.map(|m| hmd_transform * m);
-            let ipd = self.ipd()?;
             let projector = self.projector.as_mut().unwrap();
             projector.update_mvps(
                 &self.overlay_transform,
@@ -724,7 +735,6 @@ impl Vr for OpenVr {
                 &view_transforms,
                 &hmd_transform,
             )?;
-            projector.set_ipd(ipd);
             let future = projector.project(
                 self.allocator.clone(),
                 self.cmdbuf_allocator.clone(),
@@ -895,10 +905,6 @@ impl Vr for OpenVr {
                 return Ok(None);
             };
             match openvr_sys::EVREventType::try_from(openvr_event.eventType) {
-                Ok(openvr_sys::EVREventType::VREvent_IpdChanged) => {
-                    let ipd = unsafe { openvr_event.data.ipd.ipdMeters };
-                    self.ipd = Some(ipd);
-                }
                 Ok(openvr_sys::EVREventType::VREvent_Quit) => return Ok(Some(Event::RequestExit)),
                 _ => (),
             }
@@ -1533,12 +1539,10 @@ impl Vr for OpenXr {
                 Translation3::from(view_poses[1].1).to_homogeneous()
                     * view_poses[1].0.to_homogeneous(),
             ];
-            let ipd = view_poses[1].1.x - view_poses[0].1.x;
             self.swapchain.wait_image(openxr::Duration::INFINITE)?;
             let output = self.swapchain_images[image].clone();
             let projector = self.projector.as_mut().unwrap();
             projector.update_mvps(transform.matrix(), fov, &view_transforms, &hmd_transform)?;
-            projector.set_ipd(ipd);
             let future = projector.project(
                 self.allocator.clone(),
                 self.cmdbuf_allocator.clone(),

@@ -10,6 +10,7 @@ mod events;
 mod openvr;
 mod pipeline;
 mod projection;
+mod rectification;
 mod steam;
 mod utils;
 mod vrapi;

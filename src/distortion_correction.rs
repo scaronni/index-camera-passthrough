@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use log::{info, trace};
 use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
@@ -38,7 +37,7 @@ use vulkano::{
     Handle, VulkanObject,
 };
 
-use crate::utils::Array;
+use crate::{rectification::Rectification, utils::Array};
 
 #[derive(VertexTrait, Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[allow(non_snake_case)]
@@ -56,7 +55,8 @@ pub struct StereoCorrection {
     render_passes: [Arc<RenderPass>; 2],
     pipelines: [Arc<GraphicsPipeline>; 2],
     desc_sets: [Arc<DescriptorSet>; 2],
-    /// field-of-view parameter, 0 = left eye, 1 = right eye
+    /// Focal length of the rectified images divided by their size, [x, y] for the
+    /// left and the right eye
     fov: [[f32; 2]; 2],
 }
 
@@ -81,73 +81,8 @@ impl StereoCorrection {
     pub fn fov(&self) -> [[f32; 2]; 2] {
         self.fov
     }
-    /// i.e. solving Undistort(src) = dst for the smallest non-zero root.
-    fn undistort_inverse(coeff: &[f64; 4], dst: f64) -> Option<f64> {
-        // solving: x * (1 + k1*x^2 + k2*x^4 + k3*x^6 + k4*x^8) - dst = 0
-        let f = |x: f64| {
-            let x2 = x * x;
-            x * (1.0 + x2 * (coeff[0] + x2 * (coeff[1] + x2 * (coeff[2] + x2 * coeff[3])))) - dst
-        };
-        let fp = |x: f64| {
-            let x2 = x * x;
-            1.0 + x2
-                * (3.0 * coeff[0]
-                    + x2 * (5.0 * coeff[1] + x2 * (7.0 * coeff[2] + x2 * 9.0 * coeff[3])))
-        };
-        const MAX_ITER: u32 = 100;
-        let mut x = 0.0;
-        for _ in 0..MAX_ITER {
-            if fp(x) == 0.0 {
-                // Give up
-                info!("Divided by zero");
-                return None;
-            }
-            trace!("{} {} {}", x, f(x), fp(x));
-            if f(x).abs() < 1e-6 {
-                info!("Inverse is: {}, {} {}", x, f(x), dst);
-                return Some(x);
-            }
-            x = x - f(x) / fp(x);
-        }
-        // Give up
-        info!("Cannot find scale");
-        None
-    }
-    // Find a scale that maps the middle point of 4 edges of the undistorted image to
-    // the edge of the field of view of the distorted image.
-    //
-    // Returns the scales and the adjusted fovs
-    fn find_scale(coeff: &[f64; 4], center: &[f64; 2], focal: &[f64; 2]) -> [(f32, f32); 2] {
-        [0, 1].map(|i| {
-            let min_edge_dist = center[i].min(1.0 - center[i]) / focal[i];
-            // Find the input theta angle where Undistort(theta) = min_edge_dist
-            if let Some(theta) = Self::undistort_inverse(coeff, min_edge_dist) {
-                if theta >= std::f64::consts::PI / 2.0 {
-                    // infinity?
-                    (1.0, focal[i] as f32)
-                } else {
-                    // Find the input coordinates that will give us that theta
-                    let target_edge = theta.tan();
-                    log::info!("{}", target_edge);
-                    (
-                        (target_edge / (0.5 / focal[i])) as f32,
-                        (1.0 / min_edge_dist / 2.0) as f32,
-                    )
-                }
-            } else {
-                // Cannot find scale so just don't scale
-                (1.0, focal[i] as f32)
-            }
-        })
-    }
-    /// Input size is (size * 2, size)
-    /// returns also the adjusted FOV for left and right
-    ///
-    /// # Arguments
-    ///
-    /// - is_final: whether this is the final stage of the pipeline.
-    ///             if true, the output image will be submitted to
-    ///             the vr compositor.
+    /// Input is the left and right camera images side by side, each (size, size). The
+    /// output has the same layout, with the images rectified, see [`Rectification`].
     pub fn new(
         device: Arc<Device>,
         allocator: Arc<dyn MemoryAllocator>,
@@ -160,24 +95,7 @@ impl StereoCorrection {
             return Err(anyhow!("Input not square"));
         }
         let size = h as f64;
-        let center_left = [
-            camera_calib.left.intrinsics.center_x / size,
-            camera_calib.left.intrinsics.center_y / size,
-        ];
-        let center_right = [
-            camera_calib.right.intrinsics.center_x / size,
-            camera_calib.right.intrinsics.center_y / size,
-        ];
-        let focal_left = [
-            camera_calib.left.intrinsics.focal_x / size,
-            camera_calib.left.intrinsics.focal_y / size,
-        ];
-        let focal_right = [
-            camera_calib.right.intrinsics.focal_x / size,
-            camera_calib.right.intrinsics.focal_y / size,
-        ];
-        let coeff_left = camera_calib.left.intrinsics.distort.coeffs;
-        let coeff_right = camera_calib.right.intrinsics.distort.coeffs;
+        let rectification = Rectification::new(camera_calib, crate::rectification::RECTIFIED_FOV);
         let vs = vs::load(device.clone())?;
         let fs = fs::load(device.clone())?;
         let render_passes = [
@@ -267,24 +185,29 @@ impl StereoCorrection {
             },
         )?;
 
-        let coeffs = [
-            (0, coeff_left, center_left, focal_left),
-            (1, coeff_right, center_right, focal_right),
-        ];
-        let scale_fov = coeffs
-            .each_ref()
-            .map(|(_, coeff, center, focal)| Self::find_scale(coeff, center, focal));
         // Left pass
-        let desc_sets = coeffs
+        let desc_sets = [&camera_calib.left, &camera_calib.right]
             .into_iter()
-            .map(|(id, coeff, center, focal)| {
+            .enumerate()
+            .map(|(id, camera)| {
+                let intrinsics = &camera.intrinsics;
+                let mut rotation = [[0.0; 4]; 4];
+                for (column, values) in rectification.rectified_to_camera[id]
+                    .column_iter()
+                    .zip(&mut rotation)
+                {
+                    for (value, v) in column.iter().zip(values.iter_mut()) {
+                        *v = *value as f32;
+                    }
+                }
                 let uniform = fs::Parameters {
-                    center: center.map(|x| x as f32),
-                    dcoef: coeff.map(|x| x as f32),
-                    focal: focal.map(|x| x as f32),
-                    sensorSize: (size as f32).into(),
-                    scale: [scale_fov[id][0].0, scale_fov[id][1].0],
+                    rotation,
+                    dcoef: intrinsics.distort.coeffs.map(|x| x as f32),
+                    center: [intrinsics.center_x / size, intrinsics.center_y / size]
+                        .map(|x| x as f32),
+                    focal: [intrinsics.focal_x / size, intrinsics.focal_y / size].map(|x| x as f32),
                     texOffset: [0.5 * id as f32, 0.0],
+                    rectifiedFocal: rectification.focal as f32,
                 };
                 let uniform = Buffer::from_data(
                     allocator.clone(),
@@ -323,10 +246,7 @@ impl StereoCorrection {
             render_passes,
             pipelines,
             desc_sets,
-            fov: [
-                [scale_fov[0][0].1, scale_fov[0][1].1],
-                [scale_fov[1][0].1, scale_fov[1][1].1],
-            ],
+            fov: [[rectification.focal as f32; 2]; 2],
         })
     }
     pub fn correct(

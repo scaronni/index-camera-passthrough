@@ -53,10 +53,12 @@ distance = 1.0
 ##           depth of the window, so it is the most comfortable to look at.
 mode = "Stereo"
 
-## Only for "Stereo". The cameras are not where your eyes are, so the projection
-## is an approximation:
-##   "FromEye":    correct scale, but close objects show double sooner
-##   "FromCamera": wider usable range, but everything looks smaller
+## Only for "Stereo". The depth of the scene is not known, so the projection
+## assumes that everything is at the distance of the window:
+##   "FromCamera": projects from the position of the cameras, objects at the
+##                 distance of the window are shown where they really are
+##   "FromEye":    projects as if the cameras were at your eyes, which ignores the
+##                 few centimeters between them, so close objects are misplaced
 projection_mode = "FromCamera"
 
 ## Only for "Flat": which camera to show, "Left" or "Right". The one on the side

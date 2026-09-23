@@ -1,16 +1,17 @@
 use nalgebra::{matrix, Affine3, Matrix4, TCategory};
 use serde::{Deserialize, Serialize};
 
-/// Because your eye and the camera is at different physical locations, it is impossible
-/// to project camera view into VR space perfectly. There are trade offs approximating
-/// this projection. (viewing range means things too close to you will give you double vision).
+/// How the camera images are projected onto the overlay in stereo mode. The depth of
+/// the scene is not known, so the projection assumes that everything is at the
+/// distance of the overlay.
 #[derive(Eq, PartialEq, Debug, Serialize, Deserialize, Clone, Copy, PartialOrd, Ord)]
 pub enum ProjectionMode {
-    /// in this mode, we assume your eyes are at the cameras' physical location. this mode
-    /// has larger viewing range, but everything will smaller to you.
+    /// project the camera images from the position of the cameras. Objects at the
+    /// distance of the overlay are shown where they really are.
     FromCamera,
-    /// in this mode, we assume your cameras are at your eyes' physical location. everything will
-    /// have the right scale in this mode, but the viewing range is smaller.
+    /// project the camera images as if the cameras were at your eyes. This ignores
+    /// the distance between the cameras and your eyes, so objects that are not far
+    /// away are shown in the wrong place.
     FromEye,
 }
 

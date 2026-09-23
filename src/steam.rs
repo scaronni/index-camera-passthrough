@@ -1,11 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-use crate::vrapi::{Camera, StereoCamera, TrackedCamera};
+use crate::vrapi::{Camera, Extrinsics, StereoCamera, TrackedCamera};
 
 /// Extract relevant bits of information from steam config files
 #[derive(Serialize, Deserialize)]
 pub struct LighthouseConfig {
     pub tracked_cameras: Vec<TrackedCamera>,
+    #[serde(default)]
+    pub head: Extrinsics,
 }
 #[cfg(feature = "openvr")]
 use anyhow::{anyhow, Context, Result};
@@ -40,7 +42,11 @@ pub fn find_steam_config() -> Option<StereoCamera> {
             .iter()
             .copied()
             .find(|p| p.name == Camera::Right)?;
-        Some(StereoCamera { left, right })
+        Some(StereoCamera {
+            left,
+            right,
+            head: lhconfig.head,
+        })
     })
 }
 #[cfg(feature = "openvr")]
@@ -69,5 +75,9 @@ pub fn load_steam_config(hmd_serial: &str) -> Result<StereoCamera> {
         .find(|p| p.name == Camera::Right)
         .with_context(|| anyhow!("No right camera found"))?;
 
-    Ok(StereoCamera { left, right })
+    Ok(StereoCamera {
+        left,
+        right,
+        head: lhconfig.head,
+    })
 }
