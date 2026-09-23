@@ -585,9 +585,11 @@ static VULKAN_LIBRARY: OnceLock<Arc<vulkano::VulkanLibrary>> = OnceLock::new();
 const APPLICATION_KEY: &str = "index-camera-passthrough";
 
 /// Register the application in SteamVR with a manifest pointing to this binary and to
-/// its action manifest, so that it has a name, and its controller bindings can be
-/// changed in the SteamVR settings. SteamVR keeps it after the application exits,
-/// registering it again on each start keeps the paths up to date.
+/// its action manifest, so that it has a name and a stable key. SteamVR keeps it after
+/// the application exits, registering it again on each start keeps the paths up to
+/// date. As a dashboard overlay, SteamVR can start it automatically: this is enabled
+/// when it is registered for the first time, and can be disabled in the SteamVR
+/// settings.
 #[cfg(feature = "openvr")]
 fn register_application(
     xdg: &xdg::BaseDirectories,
@@ -616,6 +618,7 @@ fn register_application(
     let path = CString::new(path.to_str().context("the data directory is not UTF-8")?)?;
     let key = CString::new(APPLICATION_KEY)?;
     let mut applications = unsafe { Pin::new_unchecked(&mut *openvr_sys::VRApplications()) };
+    let first_registration = !unsafe { applications.as_mut().IsApplicationInstalled(key.as_ptr()) };
     let error = unsafe {
         applications
             .as_mut()
@@ -634,6 +637,17 @@ fn register_application(
     };
     if error != VRApplicationError_None {
         bail!("cannot identify the application, error {}", error as i32);
+    }
+    if first_registration {
+        log::info!("Registered in SteamVR, enabling the automatic start with SteamVR");
+        let error = unsafe {
+            applications
+                .as_mut()
+                .SetApplicationAutoLaunch(key.as_ptr(), true)
+        };
+        if error != VRApplicationError_None {
+            bail!("cannot enable the automatic start, error {}", error as i32);
+        }
     }
     Ok(())
 }
