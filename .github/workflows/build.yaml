@@ -1,0 +1,105 @@
+name: index_camera_passthrough
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # rust-toolchain.toml still asks for a floating nightly, but the code no
+  # longer uses nightly features and Cargo.toml declares rust-version = "1.78".
+  # Build with stable so that release binaries are reproducible.
+  RUSTUP_TOOLCHAIN: stable
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # libshaderc-dev is deliberately not installed. Ubuntu builds shaderc
+      # against the system SPIRV-Tools and glslang, so its libshaderc_combined.a
+      # is not self-contained: shaderc-sys links it without SPIRV-Tools and the
+      # vulkano_shaders proc macro then fails to load (undefined symbol
+      # spvBinaryDestroy). Without it, shaderc-sys builds shaderc from the sources
+      # bundled in the crate, which also pins the version through Cargo.lock.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libudev-dev libclang-dev clang cmake python3 ninja-build
+
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal --no-self-update
+
+      - uses: Swatinem/rust-cache@v2
+
+      # On tags the version comes from the tag and must match Cargo.toml, so a
+      # release can never ship a binary that reports a different version.
+      - name: Determine version
+        id: version
+        run: |
+          crate_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+            if [ "$version" != "$crate_version" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match the Cargo.toml version $crate_version"
+              exit 1
+            fi
+          else
+            version="${crate_version}-${GITHUB_SHA::7}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Package
+        id: package
+        run: |
+          name="index_camera_passthrough-${{ steps.version.outputs.version }}-x86_64-linux"
+          mkdir "$name"
+          install -m 755 target/release/index_camera_passthrough "$name/"
+          strip "$name/index_camera_passthrough"
+          cp index_camera_passthrough.desktop index_camera_passthrough.toml \
+            README.md LICENSE.txt "$name/"
+          tar -czf "$name.tar.gz" "$name"
+          echo "archive=$name.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: index_camera_passthrough
+          path: ${{ steps.package.outputs.archive }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download archive
+        uses: actions/download-artifact@v8
+        with:
+          name: index_camera_passthrough
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*.tar.gz
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') }}
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
