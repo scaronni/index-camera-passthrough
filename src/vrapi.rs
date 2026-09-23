@@ -577,7 +577,7 @@ impl Drop for OpenVr {
 }
 static VULKAN_LIBRARY: OnceLock<Arc<vulkano::VulkanLibrary>> = OnceLock::new();
 
-fn get_vulkan_library() -> &'static Arc<vulkano::VulkanLibrary> {
+pub(crate) fn get_vulkan_library() -> &'static Arc<vulkano::VulkanLibrary> {
     VULKAN_LIBRARY.get_or_init(|| vulkano::VulkanLibrary::new().unwrap())
 }
 

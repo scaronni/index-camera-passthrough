@@ -224,7 +224,10 @@ impl Pipeline {
                     ImageCreateInfo {
                         extent: [CAMERA_SIZE * 2, CAMERA_SIZE, 1],
                         format: Format::R8G8B8A8_UNORM,
-                        usage: ImageUsage::SAMPLED | ImageUsage::COLOR_ATTACHMENT,
+                        // TRANSFER_DST: RGB sources are uploaded directly.
+                        usage: ImageUsage::TRANSFER_DST
+                            | ImageUsage::SAMPLED
+                            | ImageUsage::COLOR_ATTACHMENT,
                         ..Default::default()
                     },
                     MemoryTypeFilter::PREFER_DEVICE,

@@ -11,6 +11,7 @@ mod openvr;
 mod pipeline;
 mod projection;
 mod rectification;
+mod rectify_image;
 mod steam;
 mod utils;
 mod vrapi;
@@ -301,7 +302,20 @@ fn next_camera_frame<'a>(
     }
 }
 
+/// Camera passthrough for Valve Index on Linux
+#[derive(argh::FromArgs)]
+struct Args {
+    /// rectify a camera frame (the left and right images side by side, as captured
+    /// from the camera) with the lens correction of the pipeline, then exit
+    #[argh(option, arg_name = "frame.png")]
+    rectify: Option<std::path::PathBuf>,
+    /// where to write the rectified frame
+    #[argh(option, default = "\"rectified.png\".into()")]
+    output: std::path::PathBuf,
+}
+
 fn main() -> Result<()> {
+    let args: Args = argh::from_env();
     let xdg = xdg::BaseDirectories::with_prefix("index-camera-passthrough");
     first_run(&xdg)?;
 
@@ -311,6 +325,9 @@ fn main() -> Result<()> {
     env_logger::Builder::from_env(env)
         .format_timestamp_millis()
         .init();
+    if let Some(input) = args.rectify {
+        return rectify_image::rectify_image(&input, &args.output);
+    }
     let camera = v4l::Device::with_path(if cfg.camera_device.is_empty() {
         find_index_camera()?
     } else {
