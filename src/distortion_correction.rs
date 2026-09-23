@@ -95,7 +95,7 @@ impl StereoCorrection {
             return Err(anyhow!("Input not square"));
         }
         let size = h as f64;
-        let rectification = Rectification::new(camera_calib, crate::rectification::RECTIFIED_FOV);
+        let rectification = Rectification::new(camera_calib);
         let vs = vs::load(device.clone())?;
         let fs = fs::load(device.clone())?;
         let render_passes = [

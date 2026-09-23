@@ -419,9 +419,7 @@ impl Projection {
             render_pass,
             pipeline,
             extent: [source_extent[0], source_extent[1]],
-            rectification: camera_calib
-                .as_ref()
-                .map(|calib| Rectification::new(calib, crate::rectification::RECTIFIED_FOV)),
+            rectification: camera_calib.as_ref().map(Rectification::new),
             mvps_changed: true,
         })
     }

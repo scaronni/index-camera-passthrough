@@ -3,11 +3,7 @@
 use anyhow::Result;
 use opencv_stereo::{StereoMatcher, DISPARITY_SCALE};
 
-use crate::{
-    rectification::{Rectification, RECTIFIED_FOV},
-    vrapi::StereoCamera,
-    CAMERA_SIZE,
-};
+use crate::{rectification::Rectification, vrapi::StereoCamera, CAMERA_SIZE};
 
 /// Size of the disparity map. Matching at this size takes a few milliseconds, and
 /// measured depth is within a few percent up to about 2.5 m.
@@ -42,7 +38,7 @@ pub struct DepthEstimator {
 
 impl DepthEstimator {
     pub fn new(calib: &StereoCamera) -> Result<Self> {
-        let rectification = Rectification::new(calib, RECTIFIED_FOV);
+        let rectification = Rectification::new(calib);
         let maps = [&calib.left.intrinsics, &calib.right.intrinsics]
             .into_iter()
             .enumerate()

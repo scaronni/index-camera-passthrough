@@ -16,9 +16,6 @@ use nalgebra::{Isometry3, Matrix3, Rotation3, Translation3, UnitQuaternion, Vect
 
 use crate::vrapi::{Extrinsics, Intrinsics, StereoCamera};
 
-/// Field of view of the rectified images, both horizontally and vertically.
-pub const RECTIFIED_FOV: f64 = 120.0_f64.to_radians();
-
 /// Conversion between the OpenGL and the OpenCV camera axes, it is its own inverse.
 fn flip_yz() -> Matrix3<f64> {
     Matrix3::from_diagonal(&Vector3::new(1.0, -1.0, -1.0))
@@ -47,8 +44,18 @@ pub struct Rectification {
     pub focal: f64,
 }
 
+/// The highest focal length of the cameras, divided by the size of their images. The
+/// rectified images use it, so that their center keeps the full resolution of the
+/// cameras: for a Valve Index, they have a field of view of about 98 degrees.
+fn camera_focal(calib: &StereoCamera) -> f64 {
+    [&calib.left.intrinsics, &calib.right.intrinsics]
+        .iter()
+        .flat_map(|i| [i.focal_x / i.width, i.focal_y / i.height])
+        .fold(0.0, f64::max)
+}
+
 impl Rectification {
-    pub fn new(calib: &StereoCamera, fov: f64) -> Self {
+    pub fn new(calib: &StereoCamera) -> Self {
         let head_rotation = calib.head.rotation();
         let head_position = Vector3::from(calib.head.position);
         // Rotation and position of the physical cameras in the Hmd frame.
@@ -74,7 +81,7 @@ impl Rectification {
                 .map(|(_, position)| Isometry3::from_parts(Translation3::from(position), rotation)),
             rectified_to_camera: [left, right]
                 .map(|(camera, _)| flip_yz() * camera.transpose() * rectified * flip_yz()),
-            focal: 0.5 / (fov / 2.0).tan(),
+            focal: camera_focal(calib),
         }
     }
 
@@ -218,7 +225,7 @@ mod tests {
 
     #[test]
     fn cameras_in_hmd_frame() {
-        let r = Rectification::new(&index_calibration(), RECTIFIED_FOV);
+        let r = Rectification::new(&index_calibration());
         let [left, right] = r.camera_to_head.map(|pose| pose.translation.vector);
         // The cameras are in front of the eyes, a bit below them, 13.5 cm apart.
         assert!(left.x < 0.0 && right.x > 0.0);
@@ -230,8 +237,30 @@ mod tests {
     }
 
     #[test]
+    fn center_keeps_the_resolution_of_the_cameras() {
+        let calib = index_calibration();
+        let r = Rectification::new(&calib);
+        // One pixel of the rectified image, at its center, is about one pixel of the
+        // camera images: the center is a few degrees off the axis of the cameras.
+        for (eye, camera) in [calib.left, calib.right].iter().enumerate() {
+            let pixel = 1.0 / camera.intrinsics.width;
+            let a = r.camera_position(eye, &camera.intrinsics, [0.5, 0.5]);
+            let b = r.camera_position(eye, &camera.intrinsics, [0.5 + pixel, 0.5 + pixel]);
+            let moved = ((b[0] - a[0]).hypot(b[1] - a[1])) / pixel;
+            assert!((moved / 2f64.sqrt() - 1.0).abs() < 0.01, "{moved}");
+        }
+        // About 98 degrees for the Index.
+        let fov = 2.0 * (0.5 / r.focal).atan();
+        assert!(
+            (fov.to_degrees() - 98.0).abs() < 1.0,
+            "{}",
+            fov.to_degrees()
+        );
+    }
+
+    #[test]
     fn rows_match() {
-        let r = Rectification::new(&index_calibration(), RECTIFIED_FOV);
+        let r = Rectification::new(&index_calibration());
         for point in [
             [0.0, 0.0, -2.0],
             [-1.0, 0.5, -1.5],
@@ -249,7 +278,7 @@ mod tests {
     #[test]
     fn rays_reach_the_physical_cameras() {
         let calib = index_calibration();
-        let r = Rectification::new(&calib, RECTIFIED_FOV);
+        let r = Rectification::new(&calib);
         let point = Point3::new(0.3, -0.2, -1.0);
         for (eye, camera) in [calib.left, calib.right].iter().enumerate() {
             // Ray of the point in the rectified camera, turned into the physical camera.
@@ -270,7 +299,7 @@ mod tests {
     #[test]
     fn camera_position_matches_the_fisheye_projection() {
         let calib = index_calibration();
-        let r = Rectification::new(&calib, RECTIFIED_FOV);
+        let r = Rectification::new(&calib);
         let point = Point3::new(-0.4, 0.3, -1.2);
         for (eye, camera) in [calib.left, calib.right].iter().enumerate() {
             let position =
