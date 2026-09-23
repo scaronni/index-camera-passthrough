@@ -322,8 +322,34 @@ struct Args {
     project: Option<std::path::PathBuf>,
 }
 
+/// Parse the command line like `argh::from_env`, ignoring empty arguments: SteamVR
+/// starts applications with an empty argument when their manifest has no arguments.
+fn parse_args() -> Args {
+    let args: Vec<String> = std::env::args().filter(|arg| !arg.is_empty()).collect();
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    let command = args
+        .first()
+        .and_then(|path| std::path::Path::new(path).file_name())
+        .and_then(|name| name.to_str())
+        .unwrap_or("index-camera-passthrough");
+    <Args as argh::FromArgs>::from_args(&[command], args.get(1..).unwrap_or_default())
+        .unwrap_or_else(|exit| match exit.status {
+            Ok(()) => {
+                println!("{}", exit.output);
+                std::process::exit(0)
+            }
+            Err(()) => {
+                eprintln!(
+                    "{}\nRun {command} --help for more information.",
+                    exit.output.trim_end()
+                );
+                std::process::exit(1)
+            }
+        })
+}
+
 fn main() -> Result<()> {
-    let args: Args = argh::from_env();
+    let args = parse_args();
     let xdg = xdg::BaseDirectories::with_prefix("index-camera-passthrough");
     first_run(&xdg)?;
 
