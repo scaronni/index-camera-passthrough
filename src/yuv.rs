@@ -3,9 +3,8 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::CommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage::OneTimeSubmit, RecordingCommandBuffer, RenderPassBeginInfo,
-        SubpassEndInfo,
+        allocator::CommandBufferAllocator, AutoCommandBufferBuilder,
+        CommandBufferUsage::OneTimeSubmit, RenderPassBeginInfo, SubpassEndInfo,
     },
     command_buffer::{SubpassBeginInfo, SubpassContents},
     descriptor_set::{allocator::DescriptorSetAllocator, DescriptorSet, WriteDescriptorSet},
@@ -131,9 +130,7 @@ impl GpuYuyvConverter {
             device.clone(),
             None,
             GraphicsPipelineCreateInfo {
-                vertex_input_state: Some(
-                    Vertex::per_vertex().definition(&vs.info().input_interface)?,
-                ),
+                vertex_input_state: Some(Vertex::per_vertex().definition(&vs)?),
                 stages: stages.into_iter().collect(),
                 input_assembly_state: Some(InputAssemblyState {
                     topology: PrimitiveTopology::TriangleStrip,
@@ -208,14 +205,10 @@ impl GpuYuyvConverter {
                 return Err(anyhow!("Queue mismatch"));
             }
         }
-        let mut cmdbuf = RecordingCommandBuffer::new(
+        let mut cmdbuf = AutoCommandBufferBuilder::primary(
             cmdbuf_allocator,
             queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: OneTimeSubmit,
-                ..Default::default()
-            },
+            OneTimeSubmit,
         )?;
         // Build a pipeline to do yuyv -> rgb
         let vertex_buffer = Buffer::from_iter::<Vertex, _>(
@@ -276,14 +269,17 @@ impl GpuYuyvConverter {
                 0,
                 self.desc_set.clone(),
             )?
-            .bind_vertex_buffers(0, vertex_buffer.clone())?
-            .draw(vertex_buffer.len() as u32, 1, 0, 0)
+            .bind_vertex_buffers(0, vertex_buffer.clone())?;
+        // The shaders only sample the bound images and read the bound vertex buffer.
+        unsafe { cmdbuf.draw(vertex_buffer.len() as u32, 1, 0, 0) }
             .map_err(|e| ConverterError::Anyhow(e.into()))?
             .end_render_pass(SubpassEndInfo::default())
             .map_err(|e| ConverterError::Anyhow(e.into()))?;
         Ok(after.then_execute(
             queue.clone(),
-            cmdbuf.end().map_err(|e| ConverterError::Anyhow(e.into()))?,
+            cmdbuf
+                .build()
+                .map_err(|e| ConverterError::Anyhow(e.into()))?,
         )?)
     }
 }

@@ -291,7 +291,7 @@ fn next_camera_frame<'a>(
 }
 
 fn main() -> Result<()> {
-    let xdg = xdg::BaseDirectories::with_prefix("index_camera_passthrough")?;
+    let xdg = xdg::BaseDirectories::with_prefix("index_camera_passthrough");
     first_run(&xdg)?;
 
     let cfg = config::load_config(&xdg)?;

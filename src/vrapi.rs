@@ -1,39 +1,45 @@
 #[cfg(feature = "openxr")]
 use itertools::Itertools;
+#[cfg(feature = "openvr")]
 use nalgebra::Matrix4;
 #[cfg(feature = "openxr")]
 use nalgebra::{Affine3, Matrix3, Translation3, UnitQuaternion, Vector3};
 #[cfg(feature = "openvr")]
-use openvr_sys2::{ETrackedPropertyError, EVRInitError, EVRInputError, EVROverlayError};
+use openvr_sys::{ETrackedPropertyError, EVRInitError, EVRInputError, EVROverlayError};
 #[cfg(feature = "openxr")]
 use openxr::{
     ApplicationInfo, EnvironmentBlendMode, EventDataBuffer, Extent2Df, Extent2Di, EyeVisibility,
     Offset2Di, OverlaySessionCreateFlagsEXTX, Rect2Di, ReferenceSpaceType, SwapchainSubImage,
     ViewConfigurationType, ViewStateFlags,
 };
+#[cfg(feature = "openvr")]
+use std::{ffi::CString, mem::MaybeUninit, pin::Pin};
 use std::{
-    ffi::CString,
-    mem::MaybeUninit,
-    pin::Pin,
     sync::{Arc, OnceLock},
     time::Duration,
 };
 use vulkano::{
-    command_buffer::{
-        allocator::{CommandBufferAllocator, StandardCommandBufferAllocator},
-        sys::{CommandBufferBeginInfo, RawRecordingCommandBuffer},
-        CommandBufferLevel, CommandBufferUsage,
-    },
+    command_buffer::allocator::{CommandBufferAllocator, StandardCommandBufferAllocator},
     descriptor_set::allocator::{
         DescriptorSetAllocator, StandardDescriptorSetAllocator,
         StandardDescriptorSetAllocatorCreateInfo,
     },
-    device::{physical::PhysicalDevice, Device, Queue, QueueFlags},
-    image::{Image, ImageAspects, ImageLayout, ImageSubresourceRange},
+    device::{Device, Queue, QueueFlags},
+    image::{Image, ImageLayout},
     instance::Instance,
     memory::allocator::{MemoryAllocator, StandardMemoryAllocator},
-    sync::{AccessFlags, DependencyInfo, GpuFuture, ImageMemoryBarrier, PipelineStages},
+    sync::GpuFuture,
     Handle, VulkanObject,
+};
+
+#[cfg(feature = "openvr")]
+use vulkano::{
+    command_buffer::{
+        CommandBufferBeginInfo, CommandBufferLevel, CommandBufferUsage, RecordingCommandBuffer,
+    },
+    device::physical::PhysicalDevice,
+    image::{ImageAspects, ImageSubresourceRange},
+    sync::{AccessFlags, DependencyInfo, ImageMemoryBarrier, PipelineStages},
 };
 
 #[cfg(feature = "openxr")]
@@ -44,14 +50,13 @@ use vulkano::{
 
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "openvr")]
-use crate::APP_KEY;
 #[cfg(feature = "openxr")]
 use crate::CAMERA_SIZE;
+#[cfg(feature = "openvr")]
+use crate::{config::Eye, APP_KEY, APP_NAME};
 use crate::{
-    config::{DisplayMode, Eye, PositionMode},
+    config::{DisplayMode, PositionMode},
     utils::DeviceExt,
-    APP_NAME,
 };
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
@@ -267,9 +272,9 @@ struct TextureState {
 #[cfg(feature = "openvr")]
 pub(crate) struct OpenVr {
     sys: crate::openvr::VRSystem,
-    handle: openvr_sys2::VROverlayHandle_t,
-    buttons: [openvr_sys2::VRActionHandle_t; 4],
-    action_set: openvr_sys2::VRActionSetHandle_t,
+    handle: openvr_sys::VROverlayHandle_t,
+    buttons: [openvr_sys::VRActionHandle_t; 4],
+    action_set: openvr_sys::VRActionSetHandle_t,
     texture: Option<TextureState>,
     camera_config: Option<StereoCamera>,
     position_mode: PositionMode,
@@ -298,7 +303,7 @@ impl OpenVr {
         unsafe {
             sys.pin_mut().GetOutputDevice(
                 &mut target_device,
-                openvr_sys2::ETextureType::TextureType_Vulkan,
+                openvr_sys::ETextureType::TextureType_Vulkan,
                 instance.handle().as_raw() as *mut _,
             )
         };
@@ -329,7 +334,7 @@ impl OpenVr {
             vulkano::device::Device::new(
                 physical_device,
                 vulkano::device::DeviceCreateInfo {
-                    enabled_features: vulkano::device::Features::empty(),
+                    enabled_features: vulkano::device::DeviceFeatures::empty(),
                     enabled_extensions: extensions,
                     queue_create_infos: vec![vulkano::device::QueueCreateInfo {
                         queue_family_index: queue_family as u32,
@@ -362,9 +367,9 @@ impl OpenVr {
         let vroverlay = sys.overlay().create_overlay(APP_KEY, APP_NAME)?;
         sys.overlay()
             .pin_mut()
-            .SetOverlayTextureColorSpace(vroverlay, openvr_sys2::EColorSpace::ColorSpace_Linear)
+            .SetOverlayTextureColorSpace(vroverlay, openvr_sys::EColorSpace::ColorSpace_Linear)
             .into_result()?;
-        let mut input = unsafe { Pin::new_unchecked(&mut *openvr_sys2::VRInput()) };
+        let mut input = unsafe { Pin::new_unchecked(&mut *openvr_sys::VRInput()) };
         let action_manifest = xdg.find_data_file("actions.json").unwrap();
         let action_manifest = std::ffi::CString::new(action_manifest.to_str().unwrap()).unwrap();
         unsafe {
@@ -454,7 +459,7 @@ impl OpenVr {
         unsafe {
             let ipd = self.sys.pin_mut().GetFloatTrackedDeviceProperty(
                 0,
-                openvr_sys2::ETrackedDeviceProperty::Prop_UserIpdMeters_Float,
+                openvr_sys::ETrackedDeviceProperty::Prop_UserIpdMeters_Float,
                 error.as_mut_ptr(),
             );
             error.assume_init().into_result()?;
@@ -474,7 +479,7 @@ impl OpenVr {
             .collect()
     }
     fn set_overlay_texture_bounds_internal(&mut self, bounds: Bounds) -> Result<(), OpenVrError> {
-        let bounds = openvr_sys2::VRTextureBounds_t {
+        let bounds = openvr_sys::VRTextureBounds_t {
             uMin: bounds.umin,
             vMin: bounds.vmin,
             uMax: bounds.umax,
@@ -495,7 +500,7 @@ impl OpenVr {
         unsafe {
             vroverlay.pin_mut().SetOverlayTransformAbsolute(
                 self.handle,
-                openvr_sys2::ETrackingUniverseOrigin::TrackingUniverseStanding,
+                openvr_sys::ETrackingUniverseOrigin::TrackingUniverseStanding,
                 &(&transform).into(),
             )
         }
@@ -506,12 +511,12 @@ impl OpenVr {
         let left_eye: Matrix4<_> = self
             .sys
             .pin_mut()
-            .GetEyeToHeadTransform(openvr_sys2::EVREye::Eye_Left)
+            .GetEyeToHeadTransform(openvr_sys::EVREye::Eye_Left)
             .into();
         let right_eye: Matrix4<_> = self
             .sys
             .pin_mut()
-            .GetEyeToHeadTransform(openvr_sys2::EVREye::Eye_Right)
+            .GetEyeToHeadTransform(openvr_sys::EVREye::Eye_Right)
             .into();
         [left_eye, right_eye]
     }
@@ -593,7 +598,7 @@ fn transition_layout(
     cmdbuf_allocator: Arc<dyn CommandBufferAllocator>,
 ) -> Result<vulkano::sync::fence::Fence, vulkano::Validated<vulkano::VulkanError>> {
     let cmdbuf = unsafe {
-        let mut builder = RawRecordingCommandBuffer::new(
+        let mut builder = RecordingCommandBuffer::new(
             cmdbuf_allocator,
             queue.queue_family_index(),
             CommandBufferLevel::Primary,
@@ -633,10 +638,7 @@ fn transition_layout(
         (fns.v1_0.queue_submit)(
             queue.handle(),
             1,
-            [ash::vk::SubmitInfo::builder()
-                .command_buffers(&[cmdbuf.handle()])
-                .build()]
-            .as_ptr(),
+            [ash::vk::SubmitInfo::default().command_buffers(&[cmdbuf.handle()])].as_ptr(),
             fence.handle(),
         )
     }
@@ -659,7 +661,7 @@ impl Vr for OpenVr {
             let serial_number_len = unsafe {
                 self.sys.pin_mut().GetStringTrackedDeviceProperty(
                     hmd_id,
-                    openvr_sys2::ETrackedDeviceProperty::Prop_SerialNumber_String,
+                    openvr_sys::ETrackedDeviceProperty::Prop_SerialNumber_String,
                     serial_number.as_mut_ptr() as *mut _,
                     32,
                     &mut error,
@@ -755,7 +757,7 @@ impl Vr for OpenVr {
         // Once we set a texture, the VRSystem starts to depend on Vulkan
         // instance being alive.
         self.sys.hold_vulkan_device(self.device.clone());
-        let mut vrimage = openvr_sys2::VRVulkanTextureData_t {
+        let mut vrimage = openvr_sys::VRVulkanTextureData_t {
             m_nWidth: crate::CAMERA_SIZE * 2,
             m_nHeight: crate::CAMERA_SIZE,
             m_nFormat: output.format() as u32,
@@ -767,10 +769,10 @@ impl Vr for OpenVr {
             m_pInstance: self.instance.handle().as_raw() as *mut _,
             m_nQueueFamilyIndex: self.queue.queue_family_index(),
         };
-        let vrtexture = openvr_sys2::Texture_t {
+        let vrtexture = openvr_sys::Texture_t {
             handle: &mut vrimage as *mut _ as *mut std::ffi::c_void,
-            eType: openvr_sys2::ETextureType::TextureType_Vulkan,
-            eColorSpace: openvr_sys2::EColorSpace::ColorSpace_Auto,
+            eType: openvr_sys::ETextureType::TextureType_Vulkan,
+            eColorSpace: openvr_sys::EColorSpace::ColorSpace_Auto,
         };
         let ret = unsafe {
             vroverlay
@@ -820,7 +822,7 @@ impl Vr for OpenVr {
             .pin_mut()
             .SetOverlayFlag(
                 self.handle,
-                openvr_sys2::VROverlayFlags::VROverlayFlags_SideBySide_Parallel,
+                openvr_sys::VROverlayFlags::VROverlayFlags_SideBySide_Parallel,
                 self.display_mode.is_stereo(),
             )
             .into_result()?;
@@ -880,42 +882,42 @@ impl Vr for OpenVr {
         self.sys.pin_mut().AcknowledgeQuit_Exiting();
     }
     fn poll_next_event(&mut self) -> Result<Option<Event>, Self::Error> {
-        use openvr_sys2::VREvent_t;
+        use openvr_sys::VREvent_t;
         loop {
             let Some(openvr_event): Option<VREvent_t> = (unsafe {
                 let mut event = MaybeUninit::uninit();
                 let has_event = self.sys.pin_mut().PollNextEvent(
                     event.as_mut_ptr() as *mut _,
-                    std::mem::size_of::<openvr_sys2::VREvent_t>() as u32,
+                    std::mem::size_of::<openvr_sys::VREvent_t>() as u32,
                 );
                 has_event.then(|| event.assume_init())
             }) else {
                 return Ok(None);
             };
-            match openvr_sys2::EVREventType::try_from(openvr_event.eventType) {
-                Ok(openvr_sys2::EVREventType::VREvent_IpdChanged) => {
+            match openvr_sys::EVREventType::try_from(openvr_event.eventType) {
+                Ok(openvr_sys::EVREventType::VREvent_IpdChanged) => {
                     let ipd = unsafe { openvr_event.data.ipd.ipdMeters };
                     self.ipd = Some(ipd);
                 }
-                Ok(openvr_sys2::EVREventType::VREvent_Quit) => return Ok(Some(Event::RequestExit)),
+                Ok(openvr_sys::EVREventType::VREvent_Quit) => return Ok(Some(Event::RequestExit)),
                 _ => (),
             }
         }
     }
     fn update_action_state(&mut self) -> Result<(), Self::Error> {
-        let vrinput = unsafe { Pin::new_unchecked(&mut *openvr_sys2::VRInput()) };
-        let mut active_action_set = openvr_sys2::VRActiveActionSet_t {
+        let vrinput = unsafe { Pin::new_unchecked(&mut *openvr_sys::VRInput()) };
+        let mut active_action_set = openvr_sys::VRActiveActionSet_t {
             ulActionSet: self.action_set,
             ulSecondaryActionSet: 0,
             unPadding: 0,
-            ulRestrictedToDevice: openvr_sys2::vr::k_ulInvalidInputValueHandle,
+            ulRestrictedToDevice: openvr_sys::vr::k_ulInvalidInputValueHandle,
             nPriority: 0,
         };
         unsafe {
             vrinput
                 .UpdateActionState(
                     &mut active_action_set,
-                    std::mem::size_of::<openvr_sys2::VRActiveActionSet_t>() as u32,
+                    std::mem::size_of::<openvr_sys::VRActiveActionSet_t>() as u32,
                     1,
                 )
                 .into_result()
@@ -925,15 +927,15 @@ impl Vr for OpenVr {
     fn get_action_state(&self, action: Action) -> Result<bool, Self::Error> {
         let action_handle = self.buttons[action as usize];
         // log::debug!("getting action {action:?}");
-        let vrinput = unsafe { Pin::new_unchecked(&mut *openvr_sys2::VRInput()) };
+        let vrinput = unsafe { Pin::new_unchecked(&mut *openvr_sys::VRInput()) };
         let action_data = unsafe {
             let mut action_data = MaybeUninit::uninit();
             let result = vrinput
                 .GetDigitalActionData(
                     action_handle,
                     action_data.as_mut_ptr(),
-                    std::mem::size_of::<openvr_sys2::VRInputValueHandle_t>() as u32,
-                    openvr_sys2::vr::k_ulInvalidInputValueHandle,
+                    std::mem::size_of::<openvr_sys::VRInputValueHandle_t>() as u32,
+                    openvr_sys::vr::k_ulInvalidInputValueHandle,
                 )
                 .into_result();
             if result.is_err() {
@@ -1023,7 +1025,7 @@ fn posef_to_nalgebra(posef: openxr::Posef) -> (UnitQuaternion<f32>, nalgebra::Ve
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum OpenXrError {
     #[error("cannot load openxr loader: {0}")]
-    XrLoad(#[from] openxr::LoadError),
+    XrLoad(#[from] openxr::EntryError),
     #[error("cannot load vulkan library: {0}")]
     VkLoad(#[from] vulkano::LoadingError),
     #[error("vulkan error: {0}")]
@@ -1081,13 +1083,11 @@ impl OpenXr {
             .position(|qf| qf.queue_flags.contains(QueueFlags::GRAPHICS))
             .ok_or(OpenXrError::NoGraphicsQueue)?;
         log::debug!("queue family: {queue_family}");
-        let queue_create_info = ash::vk::DeviceQueueCreateInfo::builder()
+        let queue_create_info = ash::vk::DeviceQueueCreateInfo::default()
             .queue_family_index(queue_family as u32)
-            .queue_priorities(std::slice::from_ref(&1.0))
-            .build();
-        let create_info = ash::vk::DeviceCreateInfo::builder()
-            .queue_create_infos(std::slice::from_ref(&queue_create_info))
-            .build();
+            .queue_priorities(std::slice::from_ref(&1.0));
+        let create_info = ash::vk::DeviceCreateInfo::default()
+            .queue_create_infos(std::slice::from_ref(&queue_create_info));
         let vulkano_create_info = vulkano::device::DeviceCreateInfo {
             queue_create_infos: vec![QueueCreateInfo {
                 queue_family_index: queue_family as u32,
@@ -1141,13 +1141,12 @@ impl OpenXr {
             .iter()
             .map(|s| s.as_c_str().as_ptr())
             .collect::<Vec<_>>();
-        let application_info = ash::vk::ApplicationInfo::builder()
+        let application_info = ash::vk::ApplicationInfo::default()
             .api_version(vulkano::Version::V1_6.try_into().unwrap());
-        let create_info = ash::vk::InstanceCreateInfo::builder()
+        let create_info = ash::vk::InstanceCreateInfo::default()
             .enabled_extension_names(&extensions)
-            .application_info(&application_info)
-            //.enabled_layer_names(&[b"VK_LAYER_KHRONOS_validation\0".as_ptr() as _])
-            .build();
+            .application_info(&application_info);
+        //.enabled_layer_names(&[b"VK_LAYER_KHRONOS_validation\0".as_ptr() as _])
         let instance = unsafe {
             xr_instance.create_vulkan_instance(
                 xr_system,
@@ -1222,7 +1221,7 @@ impl OpenXr {
     }
 
     pub(crate) fn new(placement: u32) -> Result<Self, OpenXrError> {
-        let entry = unsafe { openxr::Entry::load()? };
+        let entry = unsafe { openxr::Entry::load(&())? };
         let mut extension = openxr::ExtensionSet::default();
         extension.extx_overlay = true;
         extension.khr_vulkan_enable2 = true;
@@ -1233,9 +1232,11 @@ impl OpenXr {
                 application_version: crate::APP_VERSION,
                 engine_name: "engine",
                 engine_version: 0,
+                ..Default::default()
             },
             &extension,
             &[],
+            &(),
         )?;
         let system = instance.system(openxr::FormFactor::HEAD_MOUNTED_DISPLAY)?;
         let blend_modes = instance.enumerate_environment_blend_modes(
@@ -1271,7 +1272,7 @@ impl OpenXr {
             physical_device: device.physical_device().handle().as_raw() as _,
             device: device.handle().as_raw() as _,
             queue_family_index: queue.queue_family_index(),
-            queue_index: queue.id_within_family(),
+            queue_index: queue.queue_index(),
         };
         let info = openxr::sys::SessionCreateInfo {
             ty: openxr::sys::SessionCreateInfo::TYPE,
@@ -1279,7 +1280,7 @@ impl OpenXr {
             create_flags: Default::default(),
             system_id: system,
         };
-        let mut out = openxr::sys::Session::NULL;
+        let mut out = <openxr::sys::Session as openxr::sys::Handle>::NULL;
         let ret = unsafe { (instance.fp().create_session)(instance.as_raw(), &info, &mut out) };
         if ret.into_raw() < 0 {
             return Err(ret.into());

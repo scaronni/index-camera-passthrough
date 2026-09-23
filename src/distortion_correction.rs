@@ -4,9 +4,9 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage},
     command_buffer::{
-        allocator::CommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage::OneTimeSubmit, RecordingCommandBuffer, RenderPassBeginInfo,
-        SubpassBeginInfo, SubpassContents, SubpassEndInfo,
+        allocator::CommandBufferAllocator, AutoCommandBufferBuilder,
+        CommandBufferUsage::OneTimeSubmit, RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
+        SubpassEndInfo,
     },
     descriptor_set::{allocator::DescriptorSetAllocator, DescriptorSet, WriteDescriptorSet},
     device::{Device, Queue},
@@ -229,9 +229,7 @@ impl StereoCorrection {
                     None,
                     GraphicsPipelineCreateInfo {
                         stages: stages[..].into(),
-                        vertex_input_state: Some(
-                            Vertex::per_vertex().definition(&vs.info().input_interface)?,
-                        ),
+                        vertex_input_state: Some(Vertex::per_vertex().definition(&vs)?),
                         input_assembly_state: Some(InputAssemblyState {
                             topology: PrimitiveTopology::TriangleStrip,
                             ..Default::default()
@@ -348,14 +346,10 @@ impl StereoCorrection {
                 return Err(anyhow!("Queue mismatch"));
             }
         }
-        let mut cmdbuf = RecordingCommandBuffer::new(
+        let mut cmdbuf = AutoCommandBufferBuilder::primary(
             cmdbuf_allocator,
             queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: OneTimeSubmit,
-                ..Default::default()
-            },
+            OneTimeSubmit,
         )?;
         let vertex_buffer = Buffer::from_iter::<Vertex, _>(
             allocator,
@@ -419,11 +413,12 @@ impl StereoCorrection {
                     0,
                     self.desc_sets[id].clone(),
                 )?
-                .bind_vertex_buffers(0, vertex_buffer.clone())?
-                .draw(vertex_buffer.len() as u32, 1, 0, 0)?
+                .bind_vertex_buffers(0, vertex_buffer.clone())?;
+            // The shaders only sample the bound images and read the bound vertex buffer.
+            unsafe { cmdbuf.draw(vertex_buffer.len() as u32, 1, 0, 0) }?
                 .end_render_pass(SubpassEndInfo::default())?;
         }
-        Ok(after.then_execute(queue.clone(), cmdbuf.end()?)?)
+        Ok(after.then_execute(queue.clone(), cmdbuf.build()?)?)
     }
 }
 

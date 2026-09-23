@@ -16,9 +16,9 @@ use vulkano::{
         AllocateBufferError, Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer,
     },
     command_buffer::{
-        allocator::CommandBufferAllocator, CommandBufferBeginInfo, CommandBufferExecError,
-        CommandBufferLevel, CommandBufferUsage::OneTimeSubmit, RecordingCommandBuffer,
-        RenderPassBeginInfo, SubpassBeginInfo, SubpassContents, SubpassEndInfo,
+        allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferExecError,
+        CommandBufferUsage::OneTimeSubmit, RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
+        SubpassEndInfo,
     },
     descriptor_set::{allocator::DescriptorSetAllocator, DescriptorSet, WriteDescriptorSet},
     device::{Device, Queue},
@@ -383,7 +383,7 @@ impl Projection {
             GraphicsPipelineCreateInfo {
                 vertex_input_state: Some(
                     Vertex::per_vertex()
-                        .definition(&vs.info().input_interface)
+                        .definition(&vs)
                         .map_err(Validated::<VulkanError>::from)?,
                 ),
                 stages: stages.into_iter().collect(),
@@ -477,14 +477,10 @@ impl Projection {
         )?;
         let ProjectionParameters { overlay_width, .. } = &self.saved_parameters;
         let [w, h] = self.extent;
-        let mut cmdbuf = RecordingCommandBuffer::new(
+        let mut cmdbuf = AutoCommandBufferBuilder::primary(
             cmdbuf_allocator,
             queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: OneTimeSubmit,
-                ..Default::default()
-            },
+            OneTimeSubmit,
         )?;
         //cmdbuf.copy_image(CopyImageInfo::images(self.source.clone(), output.clone()))?;
 
@@ -552,8 +548,9 @@ impl Projection {
                 0,
                 self.desc_sets[0].clone(),
             )?
-            .bind_vertex_buffers(0, vertex_buffer.clone())?
-            .draw(vertex_buffer.len() as u32, 1, 0, 0)?
+            .bind_vertex_buffers(0, vertex_buffer.clone())?;
+        // The shaders only sample the bound images and read the bound vertex buffer.
+        unsafe { cmdbuf.draw(vertex_buffer.len() as u32, 1, 0, 0) }?
             .end_render_pass(SubpassEndInfo::default())?;
 
         // Right
@@ -584,9 +581,10 @@ impl Projection {
                 0,
                 self.desc_sets[1].clone(),
             )?
-            .bind_vertex_buffers(0, vertex_buffer.clone())?
-            .draw(vertex_buffer.len() as u32, 1, 0, 0)?
+            .bind_vertex_buffers(0, vertex_buffer.clone())?;
+        // The shaders only sample the bound images and read the bound vertex buffer.
+        unsafe { cmdbuf.draw(vertex_buffer.len() as u32, 1, 0, 0) }?
             .end_render_pass(SubpassEndInfo::default())?;
-        Ok(after.then_execute(queue.clone(), cmdbuf.end()?)?)
+        Ok(after.then_execute(queue.clone(), cmdbuf.build()?)?)
     }
 }

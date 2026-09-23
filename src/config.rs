@@ -196,9 +196,9 @@ impl Default for Backend {
 }
 
 #[cfg(feature = "openvr")]
-impl From<Button> for openvr_sys2::EVRButtonId {
+impl From<Button> for openvr_sys::EVRButtonId {
     fn from(b: Button) -> Self {
-        use openvr_sys2::EVRButtonId;
+        use openvr_sys::EVRButtonId;
         match b {
             Button::Menu => EVRButtonId::k_EButton_ApplicationMenu,
             Button::Grip => EVRButtonId::k_EButton_Grip,
@@ -210,16 +210,16 @@ impl From<Button> for openvr_sys2::EVRButtonId {
 }
 
 #[cfg(feature = "openvr")]
-impl PartialEq<openvr_sys2::EVRButtonId> for Button {
-    fn eq(&self, other: &openvr_sys2::EVRButtonId) -> bool {
-        &openvr_sys2::EVRButtonId::from(*self) == other
+impl PartialEq<openvr_sys::EVRButtonId> for Button {
+    fn eq(&self, other: &openvr_sys::EVRButtonId) -> bool {
+        &openvr_sys::EVRButtonId::from(*self) == other
     }
 }
 
 #[cfg(feature = "openvr")]
-impl From<openvr_sys2::EVRButtonId> for Button {
-    fn from(value: openvr_sys2::EVRButtonId) -> Self {
-        use openvr_sys2::EVRButtonId;
+impl From<openvr_sys::EVRButtonId> for Button {
+    fn from(value: openvr_sys::EVRButtonId) -> Self {
+        use openvr_sys::EVRButtonId;
         match value {
             EVRButtonId::k_EButton_ApplicationMenu => Button::Menu,
             EVRButtonId::k_EButton_Grip => Button::Grip,

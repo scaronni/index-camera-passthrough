@@ -5,8 +5,8 @@ use anyhow::Result;
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::CommandBufferAllocator, CommandBufferBeginInfo, CommandBufferLevel,
-        CommandBufferUsage, CopyBufferToImageInfo, RecordingCommandBuffer,
+        allocator::CommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        CopyBufferToImageInfo, PrimaryCommandBufferAbstract,
     },
     descriptor_set::allocator::DescriptorSetAllocator,
     device::{Device, DeviceOwned},
@@ -176,17 +176,13 @@ impl Pipeline {
     ) -> Result<impl GpuFuture> {
         let buffer = Subbuffer::new(self.cpu_image_buffer.clone()).slice(0..img.len() as u64);
         buffer.write()?.copy_from_slice(img);
-        let mut cmdbuf = RecordingCommandBuffer::new(
+        let mut cmdbuf = AutoCommandBufferBuilder::primary(
             cmdbuf_allocator,
             queue.queue_family_index(),
-            CommandBufferLevel::Primary,
-            CommandBufferBeginInfo {
-                usage: CommandBufferUsage::OneTimeSubmit,
-                ..Default::default()
-            },
+            CommandBufferUsage::OneTimeSubmit,
         )?;
         cmdbuf.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(buffer, output))?;
-        Ok(cmdbuf.end()?.execute(queue.clone())?)
+        Ok(cmdbuf.build()?.execute(queue.clone())?)
     }
 
     /// Create post-processing stages
