@@ -27,6 +27,9 @@ const CENTER: f32 = 0.3;
 const SMOOTHING: f32 = 0.15;
 /// The center of the view is never placed farther than this, in meters.
 const MAX_CENTER_DEPTH: f32 = 10.0;
+/// Threads used by the stereo matching. More barely make it faster at this size, and
+/// would compete with the VR runtime.
+const MATCHING_THREADS: usize = 2;
 
 /// Estimates the depth of the left rectified camera image.
 pub struct DepthEstimator {
@@ -135,6 +138,71 @@ impl DepthEstimator {
     }
 }
 
+/// A measure of the depth of the center of the view, and when its frame was captured.
+type Measure = (Option<f32>, std::time::Instant);
+
+/// Measures the depth of the center of the view in a background thread, so that the
+/// render loop does not wait for the stereo matching.
+pub struct CenterDepthWorker {
+    frames: std::sync::mpsc::SyncSender<(Vec<u8>, std::time::Instant)>,
+    measures: std::sync::mpsc::Receiver<Measure>,
+    /// Whether the worker is waiting for a frame, to skip copying frames it cannot take.
+    idle: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl CenterDepthWorker {
+    pub fn new(mut estimator: DepthEstimator) -> Self {
+        // A frame is only queued if the worker is free, so it always measures a recent
+        // one.
+        let (frames, frame_receiver) =
+            std::sync::mpsc::sync_channel::<(Vec<u8>, std::time::Instant)>(0);
+        let (measure_sender, measures) = std::sync::mpsc::channel();
+        let idle = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker_idle = idle.clone();
+        std::thread::spawn(move || {
+            opencv_stereo::set_num_threads(MATCHING_THREADS);
+            loop {
+                worker_idle.store(true, std::sync::atomic::Ordering::Relaxed);
+                // Stops when the worker is dropped.
+                let Ok((frame, time)) = frame_receiver.recv() else {
+                    break;
+                };
+                worker_idle.store(false, std::sync::atomic::Ordering::Relaxed);
+                let start = std::time::Instant::now();
+                let depth = match estimator.compute_yuyv(&frame) {
+                    Ok(_) => estimator.center_depth(),
+                    Err(e) => {
+                        log::warn!("Cannot measure the depth: {e}");
+                        None
+                    }
+                };
+                log::trace!("center depth {depth:?} in {:?}", start.elapsed());
+                if measure_sender.send((depth, time)).is_err() {
+                    break;
+                }
+            }
+        });
+        Self {
+            frames,
+            measures,
+            idle,
+        }
+    }
+
+    /// Measure a camera frame in the YUYV format of the camera, captured at `time`,
+    /// unless the worker is still busy with the previous one.
+    pub fn submit(&self, frame: &[u8], time: std::time::Instant) {
+        if self.idle.load(std::sync::atomic::Ordering::Relaxed) {
+            let _ = self.frames.try_send((frame.to_vec(), time));
+        }
+    }
+
+    /// Measures completed since the last call.
+    pub fn measures(&self) -> impl Iterator<Item = Measure> + '_ {
+        self.measures.try_iter()
+    }
+}
+
 /// Follows the depth of the center of the view over time, smoothing out the noise of
 /// single frames and short changes, like something passing quickly in front.
 #[derive(Debug, Default)]
@@ -162,6 +230,11 @@ impl DepthSmoothing {
             });
             self.last_update = Some(time);
         }
+        self.depth()
+    }
+
+    /// The smoothed depth.
+    pub fn depth(&self) -> Option<f32> {
         self.inverse_depth.map(|inverse_depth| 1.0 / inverse_depth)
     }
 }

@@ -7,6 +7,8 @@ mod ffi {
 
         type StereoMatcher;
 
+        fn set_num_threads(threads: i32);
+
         fn new_stereo_matcher(
             camera_size: i32,
             source_size: i32,
@@ -23,6 +25,11 @@ mod ffi {
             disparity: &mut [i16],
         ) -> Result<()>;
     }
+}
+
+/// Set the number of threads OpenCV uses for its parallel loops, in the whole process.
+pub fn set_num_threads(threads: usize) {
+    ffi::set_num_threads(threads as i32);
 }
 
 /// Fixed point scale of the disparities computed by [`StereoMatcher`].

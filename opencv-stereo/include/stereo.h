@@ -29,6 +29,9 @@ class StereoMatcher {
     cv::Ptr<cv::StereoSGBM> sgbm;
 };
 
+// Number of threads OpenCV uses for its parallel loops, in the whole process.
+void set_num_threads(int threads);
+
 std::unique_ptr<StereoMatcher> new_stereo_matcher(int camera_size, int source_size, int size,
                                                   rust::Slice<const float> left_map,
                                                   rust::Slice<const float> right_map,

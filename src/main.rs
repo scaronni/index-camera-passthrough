@@ -439,8 +439,10 @@ fn main() -> Result<()> {
         camera_config,
     )?;
     // Depth of what is in the center of the view, to show the scene at that distance.
-    let mut depth_estimator = match &camera_config {
-        Some(calib) if cfg.display_mode.uses_depth() => Some(depth::DepthEstimator::new(calib)?),
+    let depth_worker = match &camera_config {
+        Some(calib) if cfg.display_mode.uses_depth() => Some(depth::CenterDepthWorker::new(
+            depth::DepthEstimator::new(calib)?,
+        )),
         Some(_) => None,
         None => {
             if cfg.display_mode.uses_depth() {
@@ -514,18 +516,18 @@ fn main() -> Result<()> {
                     future.then_signal_fence().wait(None)?;
                 }
 
-                let depth = match &mut depth_estimator {
-                    Some(estimator) if !current_frame.bypass_pipeline => {
-                        let start = std::time::Instant::now();
-                        estimator.compute_yuyv(&current_frame.frame)?;
-                        let depth = estimator.center_depth();
-                        log::trace!("center depth {depth:?} in {:?}", start.elapsed());
-                        depth_smoothing.update(
-                            depth,
+                let depth = match &depth_worker {
+                    Some(worker) if !current_frame.bypass_pipeline => {
+                        for (depth, time) in worker.measures() {
+                            depth_smoothing.update(depth, time);
+                        }
+                        worker.submit(
+                            &current_frame.frame,
                             current_frame
                                 .frame_time
                                 .unwrap_or_else(std::time::Instant::now),
-                        )
+                        );
+                        depth_smoothing.depth()
                     }
                     _ => None,
                 };

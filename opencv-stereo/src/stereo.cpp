@@ -56,6 +56,8 @@ void StereoMatcher::compute(rust::Slice<const uint8_t> frame, rust::Slice<int16_
     sgbm->compute(rectified[0], rectified[1], output);
 }
 
+void set_num_threads(int threads) { cv::setNumThreads(threads); }
+
 std::unique_ptr<StereoMatcher> new_stereo_matcher(int camera_size, int source_size, int size,
                                                   rust::Slice<const float> left_map,
                                                   rust::Slice<const float> right_map,
