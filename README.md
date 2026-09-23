@@ -14,7 +14,7 @@ See also [the example config file](index-camera-passthrough.toml)
 
 ## Depth accuracy
 
-The depth of the scene is estimated with stereo matching of the two cameras, as the first step towards the "3D" passthrough listed in the TODO; it is not used for the passthrough yet. It was checked against a tape measure on a Valve Index, measuring from the front of the headset to a flat printed box standing in front of it, at the 320x320 resolution used by the program:
+With `depth = "auto"` in stereo mode, the depth of what is in the center of the view is estimated with stereo matching of the two cameras, and the scene is shown at that distance (see [the example config file](index-camera-passthrough.toml)). The depth estimation was checked against a tape measure on a Valve Index, measuring from the front of the headset to a flat printed box standing in front of it, at the 320x320 resolution used by the program:
 
 | Distance (tape measure) | Estimated depth | Error |
 |---|---|---|
