@@ -29,22 +29,19 @@ _Please_ help me out.
 
 ## Build instruction
 
-You can install this program from crates.io:
-
-```
-cargo install index-camera-passthrough
-```
+Binaries for Fedora and Ubuntu are attached to the [releases](https://github.com/scaronni/index-camera-passthrough/releases).
 
 To build this program, you need:
 
-* Rust ([How to install](https://www.rust-lang.org/tools/install), you need to select the nightly channel)
-* OpenVR
-* Vulkan
+* Rust 1.89 or newer ([How to install](https://www.rust-lang.org/tools/install))
+* clang, and the development packages of OpenVR, OpenCV, shaderc and udev:
+  * Fedora: `clang-devel openvr-devel opencv-devel libshaderc-devel systemd-devel`
+  * Debian / Ubuntu: `libclang-dev libopenvr-dev libopencv-dev libshaderc-dev libudev-dev`. Debian ships the shared shaderc library as `libshaderc.so`: point `SHADERC_LIB_DIR` to a directory with a `libshaderc_shared.so` link to it, as done in `.github/workflows/build.yaml`.
 
-in the repository first, then run
+Then run, to build with both the OpenXR and the OpenVR backends:
 
 ```
-cargo build --release
+cargo build --release --features openvr
 ```
 
 ## Usage

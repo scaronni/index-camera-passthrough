@@ -22,6 +22,7 @@ vulkano = { version = "0.35.2", default-features = false, features = ["macros"] 
 vulkano-shaders = "0.35.0"
 image = "0.25.10"
 openvr-sys = { path = "openvr-sys", optional = true }
+opencv-stereo = { path = "opencv-stereo" }
 ctrlc = "3.5.2"
 log = "0.4.34"
 env_logger = "0.11.11"

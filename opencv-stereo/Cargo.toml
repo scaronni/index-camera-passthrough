@@ -1,0 +1,15 @@
+[package]
+name = "opencv-stereo"
+version = "0.1.0"
+description = "Stereo matching for index-camera-passthrough, using the OpenCV library of the system"
+edition = "2021"
+license = "MIT"
+publish = false
+links = "opencv_calib3d"
+
+[dependencies]
+cxx = "1.0.202"
+
+[build-dependencies]
+cxx-build = "1.0.202"
+pkg-config = "0.3.34"

@@ -14,7 +14,7 @@
 
 use nalgebra::{Isometry3, Matrix3, Rotation3, Translation3, UnitQuaternion, Vector3};
 
-use crate::vrapi::{Extrinsics, StereoCamera};
+use crate::vrapi::{Extrinsics, Intrinsics, StereoCamera};
 
 /// Field of view of the rectified images, both horizontally and vertically.
 pub const RECTIFIED_FOV: f64 = 120.0_f64.to_radians();
@@ -77,12 +77,46 @@ impl Rectification {
             focal: 0.5 / (fov / 2.0).tan(),
         }
     }
+
+    /// Position in the image of a physical camera of a point of its rectified image,
+    /// the same mapping as `shaders/stereo_correction.frag`. Both positions are divided
+    /// by the image sizes.
+    pub fn camera_position(
+        &self,
+        eye: usize,
+        intrinsics: &Intrinsics,
+        rectified: [f64; 2],
+    ) -> [f64; 2] {
+        let ray = self.rectified_to_camera[eye]
+            * Vector3::new(
+                (rectified[0] - 0.5) / self.focal,
+                (rectified[1] - 0.5) / self.focal,
+                1.0,
+            );
+        let r = ray.xy().norm();
+        let theta = r.atan2(ray.z);
+        let theta2 = theta * theta;
+        let k = intrinsics.distort.coeffs;
+        let theta_d =
+            theta * (1.0 + theta2 * (k[0] + theta2 * (k[1] + theta2 * (k[2] + theta2 * k[3]))));
+        let scale = if r > 0.0 { theta_d / r } else { 0.0 };
+        [
+            (ray.x * scale * intrinsics.focal_x + intrinsics.center_x) / intrinsics.width,
+            (ray.y * scale * intrinsics.focal_y + intrinsics.center_y) / intrinsics.height,
+        ]
+    }
+
+    /// Distance between the cameras.
+    pub fn baseline(&self) -> f64 {
+        (self.camera_to_head[1].translation.vector - self.camera_to_head[0].translation.vector)
+            .norm()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vrapi::{Camera, Distort, Intrinsics, TrackedCamera};
+    use crate::vrapi::{Camera, Distort, TrackedCamera};
     use nalgebra::Point3;
 
     fn camera(
@@ -230,6 +264,37 @@ mod tests {
             let expected =
                 (flip_yz() * rotation.transpose() * (point.coords - position)).normalize();
             assert!((ray - expected).norm() < 1e-9, "{ray} {expected}");
+        }
+    }
+
+    #[test]
+    fn camera_position_matches_the_fisheye_projection() {
+        let calib = index_calibration();
+        let r = Rectification::new(&calib, RECTIFIED_FOV);
+        let point = Point3::new(-0.4, 0.3, -1.2);
+        for (eye, camera) in [calib.left, calib.right].iter().enumerate() {
+            let position =
+                r.camera_position(eye, &camera.intrinsics, project_rectified(&r, eye, &point));
+            // Direct projection of the point with the fisheye model.
+            let head = calib.head.rotation();
+            let rotation = head.transpose() * camera.extrinsics.rotation();
+            let origin = head.transpose()
+                * (Vector3::from(camera.extrinsics.position) - Vector3::from(calib.head.position));
+            let p = flip_yz() * rotation.transpose() * (point.coords - origin);
+            let (i, k) = (&camera.intrinsics, camera.intrinsics.distort.coeffs);
+            let theta = p.xy().norm().atan2(p.z);
+            let t2 = theta * theta;
+            let theta_d = theta * (1.0 + t2 * (k[0] + t2 * (k[1] + t2 * (k[2] + t2 * k[3]))));
+            let xy = p.xy() * (theta_d / p.xy().norm());
+            let expected = [
+                (xy.x * i.focal_x + i.center_x) / i.width,
+                (xy.y * i.focal_y + i.center_y) / i.height,
+            ];
+            assert!(
+                (position[0] - expected[0]).abs() < 1e-9
+                    && (position[1] - expected[1]).abs() < 1e-9,
+                "{position:?} {expected:?}"
+            );
         }
     }
 }

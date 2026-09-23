@@ -4,6 +4,7 @@
     allow(warnings, unused)
 )]
 mod config;
+mod depth;
 mod distortion_correction;
 mod events;
 #[cfg(feature = "openvr")]
@@ -312,6 +313,9 @@ struct Args {
     /// where to write the rectified frame
     #[argh(option, default = "\"rectified.png\".into()")]
     output: std::path::PathBuf,
+    /// with --rectify, also write the disparity map of the frame, in 1/16 pixels
+    #[argh(option, arg_name = "disparity.png")]
+    depth: Option<std::path::PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -326,7 +330,7 @@ fn main() -> Result<()> {
         .format_timestamp_millis()
         .init();
     if let Some(input) = args.rectify {
-        return rectify_image::rectify_image(&input, &args.output);
+        return rectify_image::rectify_image(&input, &args.output, args.depth.as_deref());
     }
     let camera = v4l::Device::with_path(if cfg.camera_device.is_empty() {
         find_index_camera()?

@@ -22,12 +22,15 @@ use vulkano::{
 use crate::{utils::DeviceExt, CAMERA_SIZE};
 
 /// Rectify `input`, the left and right camera images side by side as captured from
-/// the camera, and write the result to `output`.
-pub fn rectify_image(input: &Path, output: &Path) -> Result<()> {
+/// the camera, and write the result to `output`. If `depth` is given, also write the
+/// disparity map there, as a 16 bit image of the disparities in 1/16 pixels.
+pub fn rectify_image(input: &Path, output: &Path, depth: Option<&Path>) -> Result<()> {
     let camera_config = crate::steam::find_steam_config().context("no camera calibration found")?;
-    let frame = image::open(input)
-        .with_context(|| format!("cannot read {}", input.display()))?
-        .into_rgba8();
+    let image = image::open(input).with_context(|| format!("cannot read {}", input.display()))?;
+    if let Some(depth) = depth {
+        write_disparity(&camera_config, &image.to_luma8(), depth)?;
+    }
+    let frame = image.into_rgba8();
     if frame.dimensions() != (CAMERA_SIZE * 2, CAMERA_SIZE) {
         return Err(anyhow!(
             "{} is {}x{}, expected {}x{}",
@@ -131,6 +134,37 @@ pub fn rectify_image(input: &Path, output: &Path) -> Result<()> {
         CAMERA_SIZE,
         image::ColorType::Rgba8,
     )
+    .with_context(|| format!("cannot write {}", output.display()))?;
+    Ok(())
+}
+
+fn write_disparity(
+    camera_config: &crate::vrapi::StereoCamera,
+    frame: &image::GrayImage,
+    output: &Path,
+) -> Result<()> {
+    use crate::depth::{DepthEstimator, DEPTH_SIZE};
+    let mut estimator = DepthEstimator::new(camera_config)?;
+    let start = std::time::Instant::now();
+    let disparity = estimator.compute_gray(frame.as_raw())?.to_vec();
+    log::info!("Disparity computed in {:?}", start.elapsed());
+    let with_depth = disparity
+        .iter()
+        .filter(|&&d| estimator.depth(d).is_some())
+        .count();
+    log::info!(
+        "{:.0}% of the points have a depth",
+        with_depth as f64 / disparity.len() as f64 * 100.0
+    );
+    // Points without a match are 0.
+    let pixels: Vec<u16> = disparity.iter().map(|&d| d.max(0) as u16).collect();
+    image::ImageBuffer::<image::Luma<u16>, _>::from_raw(
+        DEPTH_SIZE as u32,
+        DEPTH_SIZE as u32,
+        pixels,
+    )
+    .unwrap()
+    .save(output)
     .with_context(|| format!("cannot write {}", output.display()))?;
     Ok(())
 }
