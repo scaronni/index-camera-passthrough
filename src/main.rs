@@ -38,7 +38,7 @@ use log::info;
 use crate::{config::Backend, vrapi::VrExt};
 
 #[cfg(feature = "openvr")]
-static APP_KEY: &str = "index_camera_passthrough_rs\0";
+static APP_KEY: &str = "index-camera-passthrough-rs\0";
 static APP_NAME: &str = "Camera\0";
 #[cfg(feature = "openxr")]
 static APP_VERSION: u32 = 0;
@@ -98,9 +98,9 @@ fn first_run(xdg: &BaseDirectories) -> Result<()> {
     ];
     const DEFAULT_CONFIG: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/index_camera_passthrough.toml"
+        "/index-camera-passthrough.toml"
     ));
-    let config = xdg.place_config_file("index_camera_passthrough.toml")?;
+    let config = xdg.place_config_file("index-camera-passthrough.toml")?;
     if !config.exists() {
         std::fs::write(&config, DEFAULT_CONFIG)?;
     }
@@ -301,7 +301,7 @@ fn next_camera_frame<'a>(
 }
 
 fn main() -> Result<()> {
-    let xdg = xdg::BaseDirectories::with_prefix("index_camera_passthrough");
+    let xdg = xdg::BaseDirectories::with_prefix("index-camera-passthrough");
     first_run(&xdg)?;
 
     let cfg = config::load_config(&xdg)?;

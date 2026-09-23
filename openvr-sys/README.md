@@ -1,6 +1,6 @@
 # openvr-sys
 
-Raw bindings to the parts of [OpenVR](https://github.com/ValveSoftware/openvr) used by index_camera_passthrough, generated with [autocxx](https://github.com/google/autocxx).
+Raw bindings to the parts of [OpenVR](https://github.com/ValveSoftware/openvr) used by index-camera-passthrough, generated with [autocxx](https://github.com/google/autocxx).
 
 The binding code comes from [openvr-sys2](https://crates.io/crates/openvr-sys2) 0.1.3 by Yuxuan Shui, released under the MIT license like the rest of this repository (see `LICENSE.txt` at the top level). It is kept here so that it can follow newer OpenVR SDK releases.
 

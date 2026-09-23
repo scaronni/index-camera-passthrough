@@ -1,7 +1,7 @@
 {
    "action_manifest_version" : 1,
    "alias_info" : {},
-   "app_key" : "system.generated.index_camera_passthrough",
+   "app_key" : "system.generated.index-camera-passthrough",
    "bindings" : {
       "/actions/main" : {
          "sources" : [
@@ -57,7 +57,7 @@
    "controller_type" : "knuckles",
    "description" : "(auto-remapped from vive_controller)",
    "interaction_profile" : "",
-   "name" : "index_camera_passthrough configuration for Index Controller",
+   "name" : "index-camera-passthrough configuration for Index Controller",
    "options" : {
       "simulate_hmd" : true,
       "simulate_rendermodel" : true,

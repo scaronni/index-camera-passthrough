@@ -1,7 +1,7 @@
 {
    "action_manifest_version" : 1,
    "alias_info" : {},
-   "app_key" : "system.generated.index_camera_passthrough",
+   "app_key" : "system.generated.index-camera-passthrough",
    "bindings" : {
       "/actions/main" : {
          "sources" : [
@@ -39,7 +39,7 @@
    "controller_type" : "vive_controller",
    "description" : "",
    "interaction_profile" : "",
-   "name" : "index_camera_passthrough configuration for Vive Controller",
+   "name" : "index-camera-passthrough configuration for Vive Controller",
    "options" : {},
    "simulated_actions" : []
 }

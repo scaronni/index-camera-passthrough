@@ -291,7 +291,7 @@ impl Default for Config {
 use anyhow::Result;
 use xdg::BaseDirectories;
 pub fn load_config(xdg: &BaseDirectories) -> Result<Config> {
-    if let Some(f) = xdg.find_config_file("index_camera_passthrough.toml") {
+    if let Some(f) = xdg.find_config_file("index-camera-passthrough.toml") {
         let cfg = std::fs::read_to_string(f)?;
         Ok(toml::from_str(&cfg)?)
     } else {
@@ -307,7 +307,7 @@ mod tests {
     /// first run, so it must always be loadable.
     #[test]
     fn default_config_parses() {
-        let cfg: Config = toml::from_str(include_str!("../index_camera_passthrough.toml"))
+        let cfg: Config = toml::from_str(include_str!("../index-camera-passthrough.toml"))
             .expect("the default configuration does not parse");
         assert!(cfg.camera_device.is_empty());
     }

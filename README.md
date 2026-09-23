@@ -7,12 +7,12 @@ The problem that the Index camera doesn't work on Linux has been there for a lon
 
 ## Features
 
-- Stereo overlay: the overlay in your game world that acts as a portal to real world. Meaning you see in 3D. A flat, non-3D view is also available, see [the example config file](index_camera_passthrough.toml).
+- Stereo overlay: the overlay in your game world that acts as a portal to real world. Meaning you see in 3D. A flat, non-3D view is also available, see [the example config file](index-camera-passthrough.toml).
 - You can configure the overlay to be in one place, or stay in front of you.
 - Use camera calibration data from your Steam installation.
 - Show/hide passthrough with button presses
 
-See also [the example config file](index_camera_passthrough.toml)
+See also [the example config file](index-camera-passthrough.toml)
 
 ## TODO
 
@@ -32,7 +32,7 @@ _Please_ help me out.
 You can install this program from crates.io:
 
 ```
-cargo install index_camera_passthrough
+cargo install index-camera-passthrough
 ```
 
 To build this program, you need:
@@ -54,10 +54,10 @@ cargo build --release
 After you have built the program, copy it to `/usr/local/bin`
 
 ```
-cp ./target/release/index_camera_passthrough /usr/local/bin
+cp ./target/release/index-camera-passthrough /usr/local/bin
 ```
 
-And then add the `index_camera_passthrough.desktop` file to your Steam Library.
+And then add the `index-camera-passthrough.desktop` file to your Steam Library.
 
 ### Run directly
 
@@ -70,9 +70,9 @@ cargo run
 or run the binary directly
 
 ```
-./target/release/index_camera_passthrough
+./target/release/index-camera-passthrough
 ```
 
 ## Configuration
 
-On first run, the default configuration is written to `~/.config/index_camera_passthrough/index_camera_passthrough.toml` (`$XDG_CONFIG_HOME/index_camera_passthrough/` if set), unless it already exists. See [the example config file](index_camera_passthrough.toml), which is the same file, for all the options. The program has to be restarted after changing it.
+On first run, the default configuration is written to `~/.config/index-camera-passthrough/index-camera-passthrough.toml` (`$XDG_CONFIG_HOME/index-camera-passthrough/` if set), unless it already exists. See [the example config file](index-camera-passthrough.toml), which is the same file, for all the options. The program has to be restarted after changing it.

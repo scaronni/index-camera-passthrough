@@ -7,7 +7,7 @@
     flake = false;
     url = "https://static.rust-lang.org/dist/2024-05-08/channel-rust-nightly.toml";
   };
-  description = "index_camera_passthrough";
+  description = "index-camera-passthrough";
 
   outputs = { self, nixpkgs, fenix, ... } @ inputs: let
     system = "x86_64-linux";

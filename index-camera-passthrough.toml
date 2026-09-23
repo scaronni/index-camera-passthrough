@@ -1,7 +1,7 @@
-## index_camera_passthrough configuration.
+## index-camera-passthrough configuration.
 ##
 ## This file is created with the default settings on first run, at
-## ~/.config/index_camera_passthrough/index_camera_passthrough.toml
+## ~/.config/index-camera-passthrough/index-camera-passthrough.toml
 ## Restart the program after changing it.
 ##
 ## Controls:
@@ -10,7 +10,7 @@
 ##   - press A on the right Index controller to move the overlay in front of you
 ##     (only when the position mode below is "Sticky")
 ## With SteamVR, the bindings can be changed in Settings -> Controllers ->
-## Manage Controller Bindings -> index_camera_passthrough.
+## Manage Controller Bindings -> index-camera-passthrough.
 
 ## VR backend.
 ##   "openvr": SteamVR

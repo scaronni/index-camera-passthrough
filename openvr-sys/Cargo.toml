@@ -1,7 +1,7 @@
 [package]
 name = "openvr-sys"
 version = "0.2.0"
-description = "Raw OpenVR bindings for index_camera_passthrough, generated with autocxx"
+description = "Raw OpenVR bindings for index-camera-passthrough, generated with autocxx"
 authors = ["Yuxuan Shui <yshuiv7@gmail.com>"]
 edition = "2021"
 license = "MIT AND BSD-3-Clause"
