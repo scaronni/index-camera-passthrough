@@ -177,7 +177,7 @@ impl StereoCorrection {
             camera_calib.right.intrinsics.focal_y / size,
         ];
         let coeff_left = camera_calib.left.intrinsics.distort.coeffs;
-        let coeff_right = camera_calib.left.intrinsics.distort.coeffs;
+        let coeff_right = camera_calib.right.intrinsics.distort.coeffs;
         let vs = vs::load(device.clone())?;
         let fs = fs::load(device.clone())?;
         let render_passes = [
