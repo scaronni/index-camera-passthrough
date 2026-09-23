@@ -54,6 +54,14 @@ distance = 1.0
 ##           depth of the window, so it is the most comfortable to look at.
 mode = "Stereo"
 
+## Only for "Stereo": at which distance the scene is shown. Objects at that
+## distance are shown where they really are, and are comfortable to look at.
+##   "window": the distance of the window
+##   "auto":   the distance of what is in the center of your view, measured with
+##             the cameras and followed as you look around. Needs the camera
+##             calibration of SteamVR.
+# depth = "auto"
+
 ## Only for "Flat": which camera to show, "Left" or "Right". The one on the side
 ## of your dominant eye usually looks more natural.
 # eye = "Left"

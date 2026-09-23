@@ -2,6 +2,7 @@
 use itertools::Itertools;
 #[cfg(feature = "openvr")]
 use nalgebra::Matrix4;
+use nalgebra::Point3;
 #[cfg(feature = "openxr")]
 use nalgebra::{Affine3, Matrix3, Translation3, UnitQuaternion, Vector3};
 #[cfg(feature = "openvr")]
@@ -176,8 +177,14 @@ pub(crate) trait Vr: VkContext {
     /// # Arguments
     ///
     /// - `elapsed`: duration since the image was captured.
-    fn submit_texture(&mut self, elapsed: Duration, fov: &[[f32; 2]; 2])
-        -> Result<(), Self::Error>;
+    /// - `depth`: distance at which the scene is shown, see [`crate::config::Depth`].
+    ///   `None` for the distance of the overlay.
+    fn submit_texture(
+        &mut self,
+        elapsed: Duration,
+        fov: &[[f32; 2]; 2],
+        depth: Option<f32>,
+    ) -> Result<(), Self::Error>;
     /// Refresh the overlay using the latest submitted camera texture.
     fn refresh(&mut self) -> Result<(), Self::Error>;
     /// Whether our render loop is synchronized with the VR runtime.
@@ -241,8 +248,9 @@ impl<T: Vr, E: Send + Sync + 'static, F: Fn(<T as Vr>::Error) -> E> Vr for VrMap
         &mut self,
         elapsed: Duration,
         fov: &[[f32; 2]; 2],
+        depth: Option<f32>,
     ) -> Result<(), Self::Error> {
-        self.0.submit_texture(elapsed, fov).map_err(&self.1)
+        self.0.submit_texture(elapsed, fov, depth).map_err(&self.1)
     }
     fn refresh(&mut self) -> Result<(), Self::Error> {
         self.0.refresh().map_err(&self.1)
@@ -479,6 +487,10 @@ impl OpenVr {
             render_texture: None,
         })
     }
+    fn eye_to_head(&self) -> [Matrix4<f32>; 2] {
+        [openvr_sys::EVREye::Eye_Left, openvr_sys::EVREye::Eye_Right]
+            .map(|eye| self.sys.pin_mut().GetEyeToHeadTransform(eye).into())
+    }
     fn required_extensions(
         sys: &crate::openvr::VRSystem,
         pdev: &PhysicalDevice,
@@ -699,6 +711,7 @@ impl Vr for OpenVr {
         &mut self,
         elapsed: Duration,
         fov: &[[f32; 2]; 2],
+        depth: Option<f32>,
     ) -> Result<(), Self::Error> {
         let hmd_transform = self.sys.hmd_transform(-elapsed.as_secs_f32()).cast::<f32>();
         if self.reposition {
@@ -713,8 +726,11 @@ impl Vr for OpenVr {
         }
         let output = if self.display_mode.is_projected() {
             let new_texture = self.double_buffer[(self.texture_in_use ^ 1) as usize].clone();
+            let eyes = self
+                .eye_to_head()
+                .map(|eye| (hmd_transform * eye).transform_point(&Point3::origin()));
             let projector = self.projector.as_mut().unwrap();
-            projector.update_mvps(&self.overlay_transform, fov, &hmd_transform)?;
+            projector.update_mvps(&self.overlay_transform, fov, &hmd_transform, &eyes, depth)?;
             let future = projector.project(
                 self.allocator.clone(),
                 self.cmdbuf_allocator.clone(),
@@ -1475,6 +1491,7 @@ impl Vr for OpenXr {
         &mut self,
         elapsed: Duration,
         fov: &[[f32; 2]; 2],
+        depth: Option<f32>,
     ) -> Result<(), Self::Error> {
         log::trace!("submit texture");
         let frame_state = self.frame_state.as_ref().unwrap();
@@ -1515,7 +1532,8 @@ impl Vr for OpenXr {
             self.swapchain.wait_image(openxr::Duration::INFINITE)?;
             let output = self.swapchain_images[image].clone();
             let projector = self.projector.as_mut().unwrap();
-            projector.update_mvps(transform.matrix(), fov, &hmd_transform)?;
+            let eyes = [0, 1].map(|eye| Point3::from(view_poses[eye].1));
+            projector.update_mvps(transform.matrix(), fov, &hmd_transform, &eyes, depth)?;
             let future = projector.project(
                 self.allocator.clone(),
                 self.cmdbuf_allocator.clone(),

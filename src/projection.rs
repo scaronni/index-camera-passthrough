@@ -148,7 +148,34 @@ impl From<Box<vulkano::ValidationError>> for ProjectorError {
     }
 }
 
-use nalgebra::{matrix, Matrix4, RawStorage, Scalar};
+use nalgebra::{matrix, Matrix4, Point3, RawStorage, Scalar};
+
+/// Transform, in the frame of the overlay, from the points of the overlay to the points
+/// of the scene that `eye` sees through them, when the scene is a plane parallel to the
+/// overlay through `target`. Both points are given in world space.
+///
+/// Seen from the eye, the overlay and the scene plane are the same picture at different
+/// scales: this is a scaling around the eye.
+fn scene_plane(
+    overlay_transform: &Matrix4<f32>,
+    eye: &Point3<f32>,
+    target: &Point3<f32>,
+) -> Matrix4<f32> {
+    let world_to_overlay = overlay_transform
+        .try_inverse()
+        .expect("overlay transform not invertible");
+    let eye = world_to_overlay.transform_point(eye);
+    let target = world_to_overlay.transform_point(target);
+    // The overlay faces +z. An eye behind it, or a scene plane behind the eye, cannot be
+    // projected.
+    if eye.z <= 0.0 || target.z >= eye.z {
+        return Matrix4::identity();
+    }
+    let scale = (eye.z - target.z) / eye.z;
+    Matrix4::new_translation(&eye.coords)
+        * Matrix4::new_scaling(scale)
+        * Matrix4::new_translation(&-eye.coords)
+}
 impl Projection {
     /// Calculate the MVP of the rectified camera images, for each eye.
     ///
@@ -157,11 +184,18 @@ impl Projection {
     /// - overlay_transform: pose of the overlay in world space
     /// - fov: focal length of the rectified images divided by their size
     /// - hmd_transform: pose of the Hmd in world space
+    ///
+    /// Each eye sees, through each point of the overlay, the scene on a plane parallel
+    /// to the overlay: the overlay itself, or with `depth`, the plane through the point
+    /// at that distance straight ahead of the left rectified camera. Objects on that
+    /// plane are shown where they really are.
     pub(crate) fn update_mvps(
         &mut self,
         overlay_transform: &Matrix4<f32>,
         fov: &[[f32; 2]; 2],
         hmd_transform: &Matrix4<f32>,
+        eyes: &[Point3<f32>; 2],
+        depth: Option<f32>,
     ) -> Result<(), ProjectorError> {
         // Poses of the rectified cameras in the Hmd frame. Without calibration, assume
         // cameras at the center of the Hmd, looking straight ahead.
@@ -172,6 +206,14 @@ impl Projection {
                     .map(|pose| pose.to_homogeneous().cast::<f32>())
             })
             .unwrap_or([Matrix4::identity(); 2]);
+        let scene_planes = match depth {
+            Some(depth) => {
+                let target =
+                    (hmd_transform * cameras[0]).transform_point(&Point3::new(0.0, 0.0, -depth));
+                eyes.map(|eye| scene_plane(overlay_transform, &eye, &target))
+            }
+            None => [Matrix4::identity(); 2],
+        };
         let [left_eye, right_eye] = cameras.map(|camera| hmd_transform * camera);
         let left_view = left_eye
             .try_inverse()
@@ -197,8 +239,8 @@ impl Projection {
             0.0, 0.0, 0.0, 1.0;
         ];
         self.set_mvps([
-            (camera_projection_left * left_view * overlay_transform).cast(),
-            (camera_projection_right * right_view * overlay_transform).cast(),
+            (camera_projection_left * left_view * overlay_transform * scene_planes[0]).cast(),
+            (camera_projection_right * right_view * overlay_transform * scene_planes[1]).cast(),
         ]);
         Ok(())
     }
@@ -513,5 +555,46 @@ impl Projection {
         unsafe { cmdbuf.draw(vertex_buffer.len() as u32, 1, 0, 0) }?
             .end_render_pass(SubpassEndInfo::default())?;
         Ok(after.then_execute(queue.clone(), cmdbuf.build()?)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nalgebra::Vector3;
+
+    /// A point of the scene plane seen through a point of the overlay is where the line
+    /// from the eye through the overlay point meets the plane.
+    #[test]
+    fn scene_plane_is_seen_through_the_overlay() {
+        let overlay = Matrix4::new_translation(&Vector3::new(0.1, -0.05, -1.0));
+        for eye in [Point3::new(-0.03, 0.0, 0.0), Point3::new(0.03, 0.02, 0.01)] {
+            for depth in [0.4, 1.0, 3.0] {
+                let target = Point3::new(0.2, 0.1, -depth);
+                let m = overlay * scene_plane(&overlay, &eye, &target);
+                for local in [[0.0, 0.0], [0.5, -0.3], [-0.4, 0.2]] {
+                    let on_overlay = overlay.transform_point(&Point3::new(local[0], local[1], 0.0));
+                    let seen = m.transform_point(&Point3::new(local[0], local[1], 0.0));
+                    // On the scene plane...
+                    assert!((seen.z + depth).abs() < 1e-4, "{seen}");
+                    // ...and on the line from the eye through the overlay point.
+                    let a = (on_overlay - eye).normalize();
+                    let b = (seen - eye).normalize();
+                    assert!((a - b).norm() < 1e-4, "{a} {b}");
+                }
+            }
+        }
+    }
+
+    /// At the distance of the overlay, the scene is the overlay itself.
+    #[test]
+    fn scene_plane_at_the_overlay() {
+        let overlay = Matrix4::new_translation(&Vector3::new(0.0, 0.0, -1.0));
+        let m = scene_plane(
+            &overlay,
+            &Point3::new(0.03, 0.0, 0.0),
+            &Point3::new(0.5, 0.2, -1.0),
+        );
+        assert!((m - Matrix4::identity()).norm() < 1e-6);
     }
 }

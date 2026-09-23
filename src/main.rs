@@ -316,6 +316,10 @@ struct Args {
     /// with --rectify, also write the disparity map of the frame, in 1/16 pixels
     #[argh(option, arg_name = "disparity.png")]
     depth: Option<std::path::PathBuf>,
+    /// with --rectify, also write what each eye sees on an overlay 1 m ahead, with the
+    /// scene at the distance of the overlay (top) and at the depth of the center (bottom)
+    #[argh(option, arg_name = "projection.png")]
+    project: Option<std::path::PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -330,7 +334,14 @@ fn main() -> Result<()> {
         .format_timestamp_millis()
         .init();
     if let Some(input) = args.rectify {
-        return rectify_image::rectify_image(&input, &args.output, args.depth.as_deref());
+        return rectify_image::rectify_image(
+            &input,
+            rectify_image::Outputs {
+                rectified: &args.output,
+                depth: args.depth.as_deref(),
+                projection: args.project.as_deref(),
+            },
+        );
     }
     let camera = v4l::Device::with_path(if cfg.camera_device.is_empty() {
         find_index_camera()?
@@ -427,6 +438,18 @@ fn main() -> Result<()> {
         config.need_yuv_conversion,
         camera_config,
     )?;
+    // Depth of what is in the center of the view, to show the scene at that distance.
+    let mut depth_estimator = match &camera_config {
+        Some(calib) if cfg.display_mode.uses_depth() => Some(depth::DepthEstimator::new(calib)?),
+        Some(_) => None,
+        None => {
+            if cfg.display_mode.uses_depth() {
+                log::warn!("No camera calibration, the depth cannot be measured");
+            }
+            None
+        }
+    };
+    let mut depth_smoothing = depth::DepthSmoothing::default();
 
     log::debug!("pipeline: {pipeline:?}");
 
@@ -491,8 +514,24 @@ fn main() -> Result<()> {
                     future.then_signal_fence().wait(None)?;
                 }
 
+                let depth = match &mut depth_estimator {
+                    Some(estimator) if !current_frame.bypass_pipeline => {
+                        let start = std::time::Instant::now();
+                        estimator.compute_yuyv(&current_frame.frame)?;
+                        let depth = estimator.center_depth();
+                        log::trace!("center depth {depth:?} in {:?}", start.elapsed());
+                        depth_smoothing.update(
+                            depth,
+                            current_frame
+                                .frame_time
+                                .unwrap_or_else(std::time::Instant::now),
+                        )
+                    }
+                    _ => None,
+                };
+
                 // Submit the texture
-                vrsys.submit_texture(elapsed, &pipeline.fov())?;
+                vrsys.submit_texture(elapsed, &pipeline.fov(), depth)?;
             }
         } else {
             // If we don't have a frame, this means either the overlay is not visible, or

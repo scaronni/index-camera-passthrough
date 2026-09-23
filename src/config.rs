@@ -105,6 +105,18 @@ pub const fn default_display_eye() -> Eye {
     Eye::Left
 }
 
+/// Depth at which the scene is shown in stereo mode. Objects at that depth are shown
+/// where they really are, nearer and farther objects are not.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Depth {
+    /// the distance of the overlay
+    #[default]
+    Window,
+    /// the distance of what is in the center of the view, measured with the cameras
+    Auto,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[serde(tag = "mode")]
 pub enum DisplayMode {
@@ -113,8 +125,11 @@ pub enum DisplayMode {
     /// display a stereo image on the overlay. conceptually the overlay becomes a portal from VR
     /// space to real world. you will be able to see more of the real world if the overlay occupys
     /// more of your field of view. The camera images are projected from the position of the
-    /// cameras, assuming that everything is at the distance of the overlay.
-    Stereo,
+    /// cameras, assuming that everything is at the same depth, see [`Depth`].
+    Stereo {
+        #[serde(default)]
+        depth: Depth,
+    },
     /// display one of the camera's image on the overlay
     Flat {
         /// which camera's image to display
@@ -126,10 +141,14 @@ pub enum DisplayMode {
 impl DisplayMode {
     /// Whether the camera images are projected onto the overlay.
     pub(crate) fn is_projected(&self) -> bool {
-        matches!(self, DisplayMode::Stereo)
+        matches!(self, DisplayMode::Stereo { .. })
     }
     pub(crate) fn is_stereo(&self) -> bool {
-        matches!(self, DisplayMode::Stereo | DisplayMode::Direct)
+        matches!(self, DisplayMode::Stereo { .. } | DisplayMode::Direct)
+    }
+    /// Whether the depth of the scene is estimated.
+    pub(crate) fn uses_depth(&self) -> bool {
+        matches!(self, DisplayMode::Stereo { depth: Depth::Auto })
     }
 }
 
@@ -297,7 +316,12 @@ mod tests {
                 "backend = \"openvr\"\n[display_mode]\nmode = \"Stereo\"\nprojection_mode = \"{mode}\"\n"
             ))
             .unwrap();
-            assert_eq!(cfg.display_mode, DisplayMode::Stereo);
+            assert_eq!(
+                cfg.display_mode,
+                DisplayMode::Stereo {
+                    depth: Depth::Window
+                }
+            );
         }
     }
 }
