@@ -100,7 +100,7 @@ jobs:
           mkdir "$name"
           install -m 755 target/release/index-camera-passthrough "$name/"
           strip "$name/index-camera-passthrough"
-          cp index-camera-passthrough.toml README.md LICENSE.txt "$name/"
+          cp index-camera-passthrough.toml README.md LICENSE "$name/"
           tar -czf "$name.tar.gz" "$name"
           echo "archive=$name.tar.gz" >> "$GITHUB_OUTPUT"
 
