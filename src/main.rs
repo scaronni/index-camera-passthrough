@@ -46,12 +46,22 @@ static APP_VERSION: u32 = 0;
 fn find_index_camera() -> Result<std::path::PathBuf> {
     let mut it = udev::Enumerator::new()?;
     it.match_subsystem("video4linux")?;
-    it.match_property("ID_VENDOR_ID", "28de")?;
-    it.match_property("ID_MODEL_ID", "2400")?;
 
+    // Matches on multiple properties are ORed by udev, so check them here. The camera
+    // also has a metadata node, which cannot capture.
+    let property = |dev: &udev::Device, key: &str| {
+        dev.property_value(key)
+            .and_then(|value| value.to_str())
+            .map(str::to_owned)
+    };
     let dev = it
         .scan_devices()?
-        .next()
+        .find(|dev| {
+            property(dev, "ID_VENDOR_ID").as_deref() == Some("28de")
+                && property(dev, "ID_MODEL_ID").as_deref() == Some("2400")
+                && property(dev, "ID_V4L_CAPABILITIES")
+                    .is_some_and(|caps| caps.contains(":capture:"))
+        })
         .with_context(|| anyhow!("Index camera not found"))?;
     let devnode = dev
         .devnode()
