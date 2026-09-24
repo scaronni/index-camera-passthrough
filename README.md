@@ -3,6 +3,10 @@ Index camera passthrough
 
 The problem that the Index camera doesn't work on Linux has been there for a long time, see [ValveSoftware/SteamVR-for-Linux#231](https://github.com/ValveSoftware/SteamVR-for-Linux/issues/231). And Valve will never address it.
 
+![The Knuckles controllers moving from the VR scene into the camera image](docs/passthrough.png)
+
+The controllers are drawn by SteamVR in the VR scene, and continue in the camera image at the same place and at the same depth: what you see through the passthrough is where you expect it to be.
+
 ## Features
 
 - Stereo overlay: the overlay in your game world that acts as a portal to real world. Meaning you see in 3D. A flat, non-3D view is also available.
@@ -66,6 +70,27 @@ or run the binary directly
 ## Configuration
 
 On first run, the default configuration is written to `~/.config/index-camera-passthrough/index-camera-passthrough.toml` (`$XDG_CONFIG_HOME/index-camera-passthrough/` if set), unless it already exists. See [the example config file](index-camera-passthrough.toml), which is the same file, for all the options. The program has to be restarted after changing it.
+
+## Inspecting a camera frame
+
+The program can run the processing of the passthrough on a saved camera frame, without SteamVR, to check how your cameras are corrected. It needs the camera calibration that SteamVR stores in `~/.local/share/Steam/config/lighthouse` when the headset is connected, and a Vulkan capable GPU.
+
+Save a frame of the camera, while the passthrough is not running (the camera can only be used by one program at a time):
+
+```
+ffmpeg -f v4l2 -input_format yuyv422 -video_size 1920x960 -i /dev/video0 -frames:v 1 frame.png
+```
+
+Then run:
+
+```
+index-camera-passthrough --rectify frame.png
+```
+
+This writes `rectified.png` (change it with `--output`): the left and right camera images, side by side, with the distortion of the lenses removed and rectified, so that the same point of the scene is on the same row in both images. It also logs the depth of the center of the view, as used by `depth = "auto"`, then exits. Two more images can be written:
+
+- `--depth disparity.png`: the disparity map of the left image, 320x320 16-bit grayscale, in 1/16 pixels; points without a match are 0. See [Depth accuracy](#depth-accuracy) to convert it to meters.
+- `--project projection.png`: what each eye sees on an overlay 1 m ahead, with the scene at the distance of the overlay (top) and at the depth of the center of the view (bottom).
 
 ## Build instruction
 
